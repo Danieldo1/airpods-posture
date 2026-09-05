@@ -1,0 +1,294 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* AirPostureMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AirPostureMacApp.swift */; };
+		A10000000000000000000002 /* PostureTrackingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* PostureTrackingManager.swift */; };
+		A10000000000000000000003 /* AlertService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* AlertService.swift */; };
+		A10000000000000000000004 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* MenuBarView.swift */; };
+		A10000000000000000000005 /* PostureGaugeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* PostureGaugeView.swift */; };
+		A10000000000000000000006 /* MenuBarIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* MenuBarIcon.swift */; };
+		A10000000000000000000007 /* AirPostureSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* AirPostureSettings.swift */; };
+		A10000000000000000000008 /* WarningOverlayManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* WarningOverlayManager.swift */; };
+		A10000000000000000000009 /* WeeklyAnalyticsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* WeeklyAnalyticsStore.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* AirPostureMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirPostureMacApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* PostureTrackingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostureTrackingManager.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* AlertService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertService.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* PostureGaugeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostureGaugeView.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* MenuBarIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarIcon.swift; sourceTree = "<group>"; };
+		A20000000000000000000010 /* AirPostureSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirPostureSettings.swift; sourceTree = "<group>"; };
+		A20000000000000000000011 /* WarningOverlayManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WarningOverlayManager.swift; sourceTree = "<group>"; };
+		A20000000000000000000012 /* WeeklyAnalyticsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyAnalyticsStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000000000000000000008 /* AirPostureMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AirPostureMac.entitlements; sourceTree = "<group>"; };
+		A20000000000000000000009 /* AirPosture.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AirPosture.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A30000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A40000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A40000000000000000000002 /* Sources */,
+				A40000000000000000000004 /* Resources */,
+				A20000000000000000000008 /* AirPostureMac.entitlements */,
+				A40000000000000000000005 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A40000000000000000000002 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				A40000000000000000000003 /* AirPostureMac */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000003 /* AirPostureMac */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001 /* AirPostureMacApp.swift */,
+				A20000000000000000000002 /* PostureTrackingManager.swift */,
+				A20000000000000000000003 /* AlertService.swift */,
+				A20000000000000000000004 /* MenuBarView.swift */,
+				A20000000000000000000005 /* PostureGaugeView.swift */,
+				A20000000000000000000006 /* MenuBarIcon.swift */,
+				A20000000000000000000010 /* AirPostureSettings.swift */,
+				A20000000000000000000011 /* WarningOverlayManager.swift */,
+				A20000000000000000000012 /* WeeklyAnalyticsStore.swift */,
+			);
+			path = AirPostureMac;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000004 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000007 /* Info.plist */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000005 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000009 /* AirPosture.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A50000000000000000000001 /* AirPosture */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A70000000000000000000003 /* Build configuration list for PBXNativeTarget "AirPosture" */;
+			buildPhases = (
+				A60000000000000000000001 /* Sources */,
+				A30000000000000000000001 /* Frameworks */,
+				A60000000000000000000002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AirPosture;
+			productName = AirPosture;
+			productReference = A20000000000000000000009 /* AirPosture.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A80000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+			};
+			buildConfigurationList = A70000000000000000000001 /* Build configuration list for PBXProject "AirPostureMac" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A40000000000000000000001;
+			productRefGroup = A40000000000000000000005 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A50000000000000000000001 /* AirPosture */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A60000000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A60000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* AirPostureMacApp.swift in Sources */,
+				A10000000000000000000002 /* PostureTrackingManager.swift in Sources */,
+				A10000000000000000000003 /* AlertService.swift in Sources */,
+				A10000000000000000000004 /* MenuBarView.swift in Sources */,
+				A10000000000000000000005 /* PostureGaugeView.swift in Sources */,
+				A10000000000000000000006 /* MenuBarIcon.swift in Sources */,
+				A10000000000000000000007 /* AirPostureSettings.swift in Sources */,
+				A10000000000000000000008 /* WarningOverlayManager.swift in Sources */,
+				A10000000000000000000009 /* WeeklyAnalyticsStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A90000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A90000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A90000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = AirPostureMac.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSFocusStatusUsageDescription = "AirPosture hides sit-up banners while Focus is on. Overlays and sounds still follow your settings.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "AirPosture uses the motion sensors in your AirPods to track head tilt and remind you to sit upright. Motion data never leaves this Mac.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.macposture.airposture;
+				PRODUCT_NAME = AirPosture;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A90000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = AirPostureMac.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSFocusStatusUsageDescription = "AirPosture hides sit-up banners while Focus is on. Overlays and sounds still follow your settings.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "AirPosture uses the motion sensors in your AirPods to track head tilt and remind you to sit upright. Motion data never leaves this Mac.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.macposture.airposture;
+				PRODUCT_NAME = AirPosture;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A70000000000000000000001 /* Build configuration list for PBXProject "AirPostureMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A90000000000000000000001 /* Debug */,
+				A90000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A70000000000000000000003 /* Build configuration list for PBXNativeTarget "AirPosture" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A90000000000000000000003 /* Debug */,
+				A90000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A80000000000000000000001 /* Project object */;
+}
