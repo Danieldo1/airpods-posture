@@ -16,6 +16,8 @@
 		A10000000000000000000007 /* AirPostureSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* AirPostureSettings.swift */; };
 		A10000000000000000000008 /* WarningOverlayManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* WarningOverlayManager.swift */; };
 		A10000000000000000000009 /* WeeklyAnalyticsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* WeeklyAnalyticsStore.swift */; };
+		A10000000000000000000013 /* PostureGaugeMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* PostureGaugeMapping.swift */; };
+		A10000000000000000000014 /* InstrumentBustView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* InstrumentBustView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +30,8 @@
 		A20000000000000000000010 /* AirPostureSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirPostureSettings.swift; sourceTree = "<group>"; };
 		A20000000000000000000011 /* WarningOverlayManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WarningOverlayManager.swift; sourceTree = "<group>"; };
 		A20000000000000000000012 /* WeeklyAnalyticsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyAnalyticsStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000013 /* PostureGaugeMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PostureGaugeMapping.swift; path = ../AirPostureCore/PostureGaugeMapping.swift; sourceTree = "<group>"; };
+		A20000000000000000000014 /* InstrumentBustView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstrumentBustView.swift; sourceTree = "<group>"; };
 		A20000000000000000000007 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000008 /* AirPostureMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AirPostureMac.entitlements; sourceTree = "<group>"; };
 		A20000000000000000000009 /* AirPosture.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AirPosture.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -70,6 +74,8 @@
 				A20000000000000000000003 /* AlertService.swift */,
 				A20000000000000000000004 /* MenuBarView.swift */,
 				A20000000000000000000005 /* PostureGaugeView.swift */,
+				A20000000000000000000014 /* InstrumentBustView.swift */,
+				A20000000000000000000013 /* PostureGaugeMapping.swift */,
 				A20000000000000000000006 /* MenuBarIcon.swift */,
 				A20000000000000000000010 /* AirPostureSettings.swift */,
 				A20000000000000000000011 /* WarningOverlayManager.swift */,
@@ -162,6 +168,8 @@
 				A10000000000000000000003 /* AlertService.swift in Sources */,
 				A10000000000000000000004 /* MenuBarView.swift in Sources */,
 				A10000000000000000000005 /* PostureGaugeView.swift in Sources */,
+				A10000000000000000000014 /* InstrumentBustView.swift in Sources */,
+				A10000000000000000000013 /* PostureGaugeMapping.swift in Sources */,
 				A10000000000000000000006 /* MenuBarIcon.swift in Sources */,
 				A10000000000000000000007 /* AirPostureSettings.swift in Sources */,
 				A10000000000000000000008 /* WarningOverlayManager.swift in Sources */,

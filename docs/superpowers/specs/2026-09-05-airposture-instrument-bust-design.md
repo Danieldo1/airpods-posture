@@ -26,7 +26,7 @@ Constraints that stay non-negotiable:
 - Menu-bar popover only. No extra window, no Dock HUD.
 - Public AppKit / SwiftUI / SceneKit only. No AvatarKit, no Memoji, no private frameworks.
 - Motion data never leaves the Mac. No downloaded 3D assets.
-- AirPods give pitch and roll. No face mesh, no blend shapes, no yaw in this instrument.
+- AirPods give pitch and roll. Optional session-relative yaw may rotate the bust and gate scoring when looking aside; it still does not join the tilt/lean ellipse. No face mesh or blend shapes.
 - Reduce Motion must snap; it must not keep a looping idle.
 
 ---
@@ -167,9 +167,11 @@ Locked conversion (SceneKit radians):
 
 ```
 eulerX = -pitchVisual * π/180
-eulerY = 0
+eulerY = -yawVisual * π/180   // optional; 0 when Show head turn is off
 eulerZ = -rollVisual * π/180
 ```
+
+Positive `yawDelta` (look right) must turn the bust toward the right side of the pad (same side as positive lean).
 
 Set euler angles directly on the bust root each `updateNSView`. Do not use `SCNAction`, springs, or implicit `CATransaction` animation. Reduce Motion therefore needs no extra branch for rotation besides “values are already snapped because the tracker published them.”
 

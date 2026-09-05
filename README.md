@@ -94,9 +94,9 @@ The popover is the only window.
 
 - **Attitude pad** — live tilt and lean, with a short motion trail.
 - **Coach chip** — a one-line cue plus signed Tilt / Lean values.
-- **Week strip** — Monday–Sunday bars for % of monitored time spent upright, plus a summary (episodes, minutes off-neutral, vs last week). A week starts Monday in your local timezone. Only time while tracking is on, AirPods are connected, and the active preset is calibrated counts.
+- **This week** — a compact upright/slouch/off-neutral summary stays visible; expand the full-width row for Monday–Sunday bars and hover a day for its exact value. A week starts Monday in your local timezone. Only time while tracking is on, AirPods are connected, and the active preset is calibrated counts.
 - **Desk / Sofa** — two saved neutrals. Switching applies that preset immediately. An uncalibrated preset pauses the gauge and weekly stats until you calibrate it.
-- **Options** (collapsed by default) — tracking, sensitivity, grace, overlay style (Glow / Border / Dim / Blur / Off), max strength, sound pack and volume, 2×-grace delay for sound/banner, icon style, overlay tint, snooze (15 min / 45 min / until tomorrow), and an optional sit-up chime.
+- **Options** (collapsed by default) — click anywhere on the row to open grouped Monitoring, Reminders, Appearance, and Pause & feedback controls. These include tracking, sensitivity, grace, head-turn behavior, overlay style and strength, sound, icon style, tint, snooze, and the optional sit-up chime.
 
 Snooze hides the overlay and mutes sound and banners. Tracking and the week counters keep running. **Resume** clears snooze. Snooze is in-memory only; quitting AirPosture ends it.
 
@@ -108,17 +108,21 @@ Snooze hides the overlay and mutes sound and banners. Tracking and the week coun
 | Overlay tint | Warm | Warm / Cool / Alert. Colors the overlay, not the menu-bar icon. |
 | Sound pack | Pop | Pop, Tink, Purr, Bottle, Morse. Volume 10–80%. |
 | Icon style | Posture figure | Also Horizon cross and Minimal dot. Orange while you are off-neutral through grace; red once a slouch is sustained. |
+| Ignore slouch when I turn | On | Pauses tilt/lean scoring past the turn-away angle. Yaw is session-relative only. |
+| Turn-away angle | 35° | 20–60°. Only used when the look-away gate is on. |
+| Show head turn | On | Rotates the bust left/right. Does not change scoring. |
 | Sit-up chime | Off | A softer tick when you return upright. |
 
 ## How detection works
 
 1. `CMHeadphoneMotionManager` streams `CMDeviceMotion` from the AirPods IMU.
-2. **Pitch (tilt)**, **roll (lean)**, and yaw are validated, converted to degrees, and pitch/roll are low-pass filtered (α = 0.4).
-3. **Set Neutral Posture** stores both pitch and roll for the active Desk or Sofa preset.
-4. Live deltas: tilt = pitch − baseline (negative = chin down); lean = roll − baseline (either side).
-5. Off-neutral is scored as an **ellipse**: 10° of forward tilt *or* ~5° of side lean (lean is twice as sensitive). Combined motion can also cross the line even if neither axis does alone.
-6. If that combined deviation holds for the grace period, the overlay appears and the sound/banner can fire. Returning inside the ellipse fades the overlay away.
-7. The coach chip highlights the **dominant axis**, with copy like “Lift your chin” vs “Recenter”.
+2. **Pitch (tilt)**, **roll (lean)**, and **yaw (turn)** are validated, converted to degrees, and low-pass filtered (α = 0.4).
+3. **Set Neutral Posture** stores pitch and roll for the active Desk or Sofa preset, and zeros **this session’s** heading (yaw is not persisted across launches or reconnects).
+4. Live deltas: tilt = pitch − baseline (negative = chin down); lean = roll − baseline (either side); turn = wrap-aware yaw − session zero.
+5. Off-neutral is scored as an **ellipse**: 10° of forward tilt *or* ~5° of side lean (lean is twice as sensitive). Combined motion can also cross the line even if neither axis does alone. **Yaw is not in the ellipse.**
+6. With **Ignore slouch when I turn** on (default), if `|turn|` reaches the turn-away angle (default 35°), tilt/lean scoring pauses — overlay, banner, grace, and off-neutral week time stay quiet while you look aside. Monitored time still counts.
+7. If a combined deviation holds for the grace period (and you are not gated as looking aside), the overlay appears and the sound/banner can fire. Returning inside the ellipse fades the overlay away.
+8. The coach chip highlights the **dominant axis**, with copy like “Lift your chin” / “Recenter”, or **Looking aside** while the turn gate is active. **Show head turn** rotates the bust on Y without changing scoring.
 
 ## Project layout
 
@@ -131,9 +135,12 @@ Sources/AirPostureMac/
   WeeklyAnalyticsStore.swift      Local Monday–Sunday week counters
   AlertService.swift              Banner + system sounds via AVFoundation
   MenuBarView.swift               Menu-bar console
-  PostureGaugeView.swift          Attitude pad, trail, and coach chip
+  PostureGaugeView.swift          Attitude pad, trail, coach chip, and bust
+  InstrumentBustView.swift        SceneKit glass/metal bust
   MenuBarIcon.swift               Status symbol families
 Resources/Info.plist              Motion, Focus Status, and LSUIElement keys
+Sources/AirPostureCore/
+  PostureGaugeMapping.swift       Pure pose mapping + yaw wrap/gate helpers
 ```
 
 Privacy: all processing is local. No network calls, no accounts. Weekly totals live in `~/Library/Application Support/AirPosture/weekly-analytics.json` on this Mac and are pruned after 90 days.

@@ -34,6 +34,7 @@ final class AppSession: ObservableObject {
         self.settings = settings
         self.overlayManager = WarningOverlayManager(tracker: tracker, settings: settings)
         self.weekStore = WeeklyAnalyticsStore(tracker: tracker)
+        tracker.configure(settings: settings)
         AlertService.shared.configure(settings: settings)
     }
 }

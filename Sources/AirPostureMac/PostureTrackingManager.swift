@@ -1,3 +1,6 @@
+#if SWIFT_PACKAGE
+import AirPostureCore
+#endif
 import Combine
 import CoreMotion
 import Foundation
@@ -74,15 +77,19 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     @Published private(set) var baselineRollDegrees: Double?
     @Published private(set) var pitchDeltaDegrees: Double = 0
     @Published private(set) var rollDeltaDegrees: Double = 0
+    @Published private(set) var yawDeltaDegrees: Double = 0
     @Published private(set) var deviationDegrees: Double = 0
     @Published private(set) var dominantAxis: DominantAxis = .tilt
     @Published private(set) var isPastThreshold = false
+    @Published private(set) var isLookingAway = false
     @Published private(set) var isSlouching = false
     @Published private(set) var slouchElapsedSeconds: Double = 0
     @Published private(set) var slouchProgress: Double = 0
     @Published private(set) var didJustCalibrate = false
     @Published private(set) var authorizationDenied = false
     @Published private(set) var lastErrorMessage: String?
+
+    private weak var settings: AirPostureSettings?
 
     var isCalibrated: Bool {
         baselinePitchDegrees != nil && baselineRollDegrees != nil
@@ -118,7 +125,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         case .paused:
             "Tracking paused"
         case .upright:
-            "Upright"
+            isLookingAway ? "Looking aside" : "Upright"
         case .leaning:
             dominantAxis == .tilt ? "Tilting forward" : "Leaning aside"
         case .slouching:
@@ -145,6 +152,8 @@ final class PostureTrackingManager: NSObject, ObservableObject {
 
     private var smoothedPitchDegrees: Double?
     private var smoothedRollDegrees: Double?
+    private var smoothedYawDegrees: Double?
+    private var sessionYawDegrees: Double?
     private var slouchStartedAt: Date?
     private var hasReceivedMotionSample = false
     private var lastSuccessfulMotionTime: Date?
@@ -232,9 +241,14 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         }
     }
 
+    func configure(settings: AirPostureSettings) {
+        self.settings = settings
+    }
+
     func calibrate() {
         guard canCalibrate else { return }
         persistBaseline(pitch: currentPitchDegrees, roll: currentRollDegrees)
+        rezeroSessionYaw()
         resetSlouchState()
         didJustCalibrate = true
 
@@ -284,6 +298,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         stopHealthCheck()
         hasReceivedMotionSample = false
         lastSuccessfulMotionTime = nil
+        clearSessionYaw()
         if resetLiveState {
             resetSlouchState()
             connectionStatus = .disconnected
@@ -295,6 +310,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
             lastErrorMessage = error.localizedDescription
             hasReceivedMotionSample = false
             connectionStatus = .searching
+            clearSessionYaw()
             resetSlouchState()
             return
         }
@@ -314,9 +330,20 @@ final class PostureTrackingManager: NSObject, ObservableObject {
 
         let rawPitch = pitch * 180.0 / .pi
         let rawRoll = roll * 180.0 / .pi
-        currentYawDegrees = yaw * 180.0 / .pi
+        let rawYaw = yaw * 180.0 / .pi
         currentPitchDegrees = smooth(rawPitch, previous: &smoothedPitchDegrees)
         currentRollDegrees = smooth(rawRoll, previous: &smoothedRollDegrees)
+        currentYawDegrees = smooth(rawYaw, previous: &smoothedYawDegrees)
+
+        if sessionYawDegrees == nil {
+            sessionYawDegrees = currentYawDegrees
+        }
+
+        let yawDelta = PostureGaugeMapping.wrappedDegreesDelta(
+            current: currentYawDegrees,
+            baseline: sessionYawDegrees ?? currentYawDegrees
+        )
+        yawDeltaDegrees = yawDelta
 
         migrateLegacyPitchOnlyBaselineIfNeeded()
 
@@ -325,6 +352,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
             rollDeltaDegrees = 0
             deviationDegrees = 0
             dominantAxis = .tilt
+            isLookingAway = false
             resetSlouchState()
             return
         }
@@ -345,7 +373,17 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         let combined = hypot(tiltNorm, leanNorm)
         deviationDegrees = combined * tiltThresholdDegrees
 
-        evaluatePosture(isPastThreshold: combined >= 1)
+        let gateEnabled = settings?.lookAwayGateEnabled ?? true
+        let gateThreshold = settings?.lookAwayThresholdDegrees ?? 35
+        let gated = PostureGaugeMapping.isLookingAway(
+            yawDelta: yawDelta,
+            threshold: gateThreshold,
+            enabled: gateEnabled
+        )
+        isLookingAway = gated
+
+        let ellipsePast = combined >= 1
+        evaluatePosture(isPastThreshold: ellipsePast && !gated)
     }
 
     private func evaluatePosture(isPastThreshold pastThreshold: Bool) {
@@ -388,6 +426,19 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         isSlouching = false
     }
 
+    private func rezeroSessionYaw() {
+        sessionYawDegrees = currentYawDegrees
+        yawDeltaDegrees = 0
+        isLookingAway = false
+    }
+
+    private func clearSessionYaw() {
+        sessionYawDegrees = nil
+        smoothedYawDegrees = nil
+        yawDeltaDegrees = 0
+        isLookingAway = false
+    }
+
     private func persistBaseline(pitch: Double, roll: Double) {
         baselinePitchDegrees = pitch
         baselineRollDegrees = roll
@@ -428,6 +479,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     private func handleHeadphonesConnected() {
         if isTrackingEnabled && !hasReceivedMotionSample {
             connectionStatus = .searching
+            clearSessionYaw()
             startMotionUpdates()
         }
     }
@@ -436,6 +488,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         hasReceivedMotionSample = false
         lastSuccessfulMotionTime = nil
         connectionStatus = .disconnected
+        clearSessionYaw()
         resetSlouchState()
     }
 
@@ -460,10 +513,12 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         if silence >= Motion.disconnectSilence {
             hasReceivedMotionSample = false
             connectionStatus = .disconnected
+            clearSessionYaw()
             resetSlouchState()
         } else if silence >= Motion.reconnectSilence {
             hasReceivedMotionSample = false
             connectionStatus = .searching
+            clearSessionYaw()
             resetSlouchState()
         }
     }

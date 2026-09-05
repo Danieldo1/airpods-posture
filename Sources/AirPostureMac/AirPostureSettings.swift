@@ -142,6 +142,29 @@ final class AirPostureSettings: ObservableObject {
         didSet { defaults.set(sitUpChimeEnabled, forKey: Key.sitUpChimeEnabled) }
     }
 
+    @Published var lookAwayGateEnabled: Bool {
+        didSet { defaults.set(lookAwayGateEnabled, forKey: Key.lookAwayGateEnabled) }
+    }
+
+    @Published var lookAwayThresholdDegrees: Double {
+        didSet {
+            let value = Self.clamped(
+                lookAwayThresholdDegrees,
+                min: LookAway.minThreshold,
+                max: LookAway.maxThreshold
+            )
+            if value != lookAwayThresholdDegrees {
+                lookAwayThresholdDegrees = value
+                return
+            }
+            defaults.set(value, forKey: Key.lookAwayThresholdDegrees)
+        }
+    }
+
+    @Published var showHeadTurnEnabled: Bool {
+        didSet { defaults.set(showHeadTurnEnabled, forKey: Key.showHeadTurnEnabled) }
+    }
+
     @Published var snoozeEndsAt: Date?
 
     var isSnoozed: Bool {
@@ -159,6 +182,9 @@ final class AirPostureSettings: ObservableObject {
         static let soundAfterDoubleGrace = "soundAfterDoubleGrace"
         static let iconFamily = "iconFamily"
         static let sitUpChimeEnabled = "sitUpChimeEnabled"
+        static let lookAwayGateEnabled = "lookAwayGateEnabled"
+        static let lookAwayThresholdDegrees = "lookAwayThresholdDegrees"
+        static let showHeadTurnEnabled = "showHeadTurnEnabled"
     }
 
     private enum Strength {
@@ -173,6 +199,12 @@ final class AirPostureSettings: ObservableObject {
         static let fallback = 0.45
     }
 
+    private enum LookAway {
+        static let minThreshold = 20.0
+        static let maxThreshold = 60.0
+        static let fallbackThreshold = 35.0
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         defaults.register(defaults: [
@@ -183,7 +215,10 @@ final class AirPostureSettings: ObservableObject {
             Key.soundVolume: Volume.fallback,
             Key.soundAfterDoubleGrace: false,
             Key.iconFamily: IconFamily.postureFigure.rawValue,
-            Key.sitUpChimeEnabled: false
+            Key.sitUpChimeEnabled: false,
+            Key.lookAwayGateEnabled: true,
+            Key.lookAwayThresholdDegrees: LookAway.fallbackThreshold,
+            Key.showHeadTurnEnabled: true
         ])
 
         warningStyle = Self.decode(defaults.string(forKey: Key.warningStyle), fallback: .glow)
@@ -204,6 +239,14 @@ final class AirPostureSettings: ObservableObject {
         soundAfterDoubleGrace = defaults.bool(forKey: Key.soundAfterDoubleGrace)
         iconFamily = Self.decode(defaults.string(forKey: Key.iconFamily), fallback: .postureFigure)
         sitUpChimeEnabled = defaults.bool(forKey: Key.sitUpChimeEnabled)
+        lookAwayGateEnabled = defaults.object(forKey: Key.lookAwayGateEnabled) as? Bool ?? true
+        lookAwayThresholdDegrees = Self.clamped(
+            defaults.double(forKey: Key.lookAwayThresholdDegrees),
+            min: LookAway.minThreshold,
+            max: LookAway.maxThreshold,
+            fallback: LookAway.fallbackThreshold
+        )
+        showHeadTurnEnabled = defaults.object(forKey: Key.showHeadTurnEnabled) as? Bool ?? true
     }
 
     func snooze(minutes: Int) {
