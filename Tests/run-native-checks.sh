@@ -52,11 +52,16 @@ run_store_check() {
   compile_and_run AirPostureAnalyticsStoreCheck "$CHECK_ROOT/PostureTrackingCheck.swift" "${STORE_SOURCES[@]}"
 }
 
+run_scroll_check() {
+  compile_and_run AirPostureScrollCheck Tests/AirPostureScrollCheck/main.swift Sources/AirPostureMac/ConsoleScrollBehavior.swift
+}
+
 case "${1:-checks}" in
   checks)
     compile_and_run AirPostureSettingsCheck Tests/AirPostureSettingsCheck/main.swift "${SETTINGS_SOURCES[@]}"
     run_sound_check
     run_store_check
+    run_scroll_check
     ;;
   sound-check)
     run_sound_check
@@ -64,12 +69,15 @@ case "${1:-checks}" in
   store-check)
     run_store_check
     ;;
+  scroll-check)
+    run_scroll_check
+    ;;
   sound-probe)
     echo "This opt-in probe plays Pop, Tink, Purr, Bottle, and Morse through the real system audio output."
     compile_and_run AirPostureSoundProbe Tests/AirPostureSoundProbe/main.swift "${SOUND_SOURCES[@]}" Sources/AirPostureMac/SoundPlayback.swift
     ;;
   *)
-    echo "usage: $0 [checks|sound-check|store-check|sound-probe]" >&2
+    echo "usage: $0 [checks|sound-check|store-check|scroll-check|sound-probe]" >&2
     exit 2
     ;;
 esac

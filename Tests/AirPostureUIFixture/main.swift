@@ -13,7 +13,14 @@ import SwiftUI
     init() {
         UserDefaults.standard.set(false, forKey: "isTrackingEnabled")
         settings = AirPostureSettings()
-        tracker = PostureTrackingManager()
+        if CommandLine.arguments.contains("--smoke-console") {
+            tracker = PostureTrackingManager(
+                defaults: .standard, now: Date.init,
+                monotonic: { ProcessInfo.processInfo.systemUptime }, motionManager: nil
+            )
+        } else {
+            tracker = PostureTrackingManager()
+        }
         tracker.configure(settings: settings)
         AlertService.shared.configure(settings: settings)
         store = Self.makeStore(.mixed)
@@ -92,9 +99,15 @@ struct FixtureView: View {
                 if page == "Console" {
                     MenuBarView().environmentObject(state.tracker).environmentObject(state.settings).environmentObject(state.store)
                 } else if page == "Reminders" {
-                    ScrollView(.vertical) { ReminderOptionsView(settings: state.settings).padding(16).frame(width: 360) }
+                    ScrollView(.vertical) {
+                        ReminderOptionsView(settings: state.settings).padding(16).frame(width: 360)
+                            .background(ConsoleScrollBehavior())
+                    }
                 } else {
-                    ScrollView(.vertical) { PostureAnalyticsView(store: state.store, isExpanded: $expanded).padding(16).frame(width: 360) }
+                    ScrollView(.vertical) {
+                        PostureAnalyticsView(store: state.store, isExpanded: $expanded).padding(16).frame(width: 360)
+                            .background(ConsoleScrollBehavior())
+                    }
                 }
             }.frame(width: 360)
         }
@@ -114,6 +127,23 @@ struct FixtureView: View {
         window.makeKeyAndOrderFront(nil)
         self.window = window
         NSApp.activate(ignoringOtherApps: true)
+        if CommandLine.arguments.contains("--smoke-console") {
+            Task { @MainActor in
+                for attempt in 1...3 {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    window.displayIfNeeded()
+                    precondition(window.isVisible, "Console smoke window must be displayed")
+                    if attempt < 3 {
+                        // Recreate the real console and its layer-backed scroll view.
+                        window.contentView = NSHostingView(rootView: FixtureView())
+                    }
+                }
+                print("AirPosture console smoke check passed: three displayed console lifecycles")
+                fflush(stdout)
+                window.orderOut(nil)
+                NSApp.terminate(nil)
+            }
+        }
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }

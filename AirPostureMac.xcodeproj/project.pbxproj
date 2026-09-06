@@ -10,6 +10,7 @@
 		A10000000000000000000001 /* AirPostureMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AirPostureMacApp.swift */; };
 		A10000000000000000000002 /* PostureTrackingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* PostureTrackingManager.swift */; };
 		A10000000000000000000029 /* LivePostureReadings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000029 /* LivePostureReadings.swift */; };
+		A10000000000000000000030 /* ConsoleScrollBehavior.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000030 /* ConsoleScrollBehavior.swift */; };
 		A10000000000000000000003 /* AlertService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* AlertService.swift */; };
 		A10000000000000000000004 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* MenuBarView.swift */; };
 		A10000000000000000000005 /* PostureGaugeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* PostureGaugeView.swift */; };
@@ -35,6 +36,7 @@
 		A20000000000000000000001 /* AirPostureMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirPostureMacApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* PostureTrackingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostureTrackingManager.swift; sourceTree = "<group>"; };
 		A20000000000000000000029 /* LivePostureReadings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePostureReadings.swift; sourceTree = "<group>"; };
+		A20000000000000000000030 /* ConsoleScrollBehavior.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleScrollBehavior.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* AlertService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertService.swift; sourceTree = "<group>"; };
 		A20000000000000000000004 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		A20000000000000000000005 /* PostureGaugeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostureGaugeView.swift; sourceTree = "<group>"; };
@@ -94,6 +96,7 @@
 				A20000000000000000000001 /* AirPostureMacApp.swift */,
 				A20000000000000000000002 /* PostureTrackingManager.swift */,
 				A20000000000000000000029 /* LivePostureReadings.swift */,
+				A20000000000000000000030 /* ConsoleScrollBehavior.swift */,
 				A20000000000000000000003 /* AlertService.swift */,
 				A20000000000000000000004 /* MenuBarView.swift */,
 				A20000000000000000000005 /* PostureGaugeView.swift */,
@@ -201,6 +204,7 @@
 				A10000000000000000000001 /* AirPostureMacApp.swift in Sources */,
 				A10000000000000000000002 /* PostureTrackingManager.swift in Sources */,
 				A10000000000000000000029 /* LivePostureReadings.swift in Sources */,
+				A10000000000000000000030 /* ConsoleScrollBehavior.swift in Sources */,
 				A10000000000000000000003 /* AlertService.swift in Sources */,
 				A10000000000000000000004 /* MenuBarView.swift in Sources */,
 				A10000000000000000000005 /* PostureGaugeView.swift in Sources */,

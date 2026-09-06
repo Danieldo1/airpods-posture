@@ -10,25 +10,26 @@ struct MenuBarView: View {
     @State private var optionsExpanded = false
     @State private var summaryExpanded = false
 
-    @State private var contentHeight: CGFloat = 620
     @State private var visibleScreenHeight: CGFloat = 760
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            content
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(GeometryReader { proxy in
-                    Color.clear.preference(key: ConsoleHeightKey.self, value: proxy.size.height)
-                })
-        }
-        .scrollDisabled(false)
-        .clipped()
-        .frame(width: 360, height: min(contentHeight, visibleScreenHeight))
-        .onPreferenceChange(ConsoleHeightKey.self) { height in
-            if abs(height - contentHeight) > 0.5 {
-                contentHeight = height
+        VStack(spacing: 0) {
+            ScrollView(.vertical, showsIndicators: true) {
+                content
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(ConsoleScrollBehavior())
             }
+            .clipped()
+
+            Divider()
+                .padding(.horizontal, 16)
+            footer
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .frame(width: 360, height: min(620, visibleScreenHeight))
+        .clipped()
         .background(ConsoleScreenReader { visibleScreenHeight = max(200, $0 - 48) })
     }
 
@@ -60,8 +61,6 @@ struct MenuBarView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Divider()
-            footer
         }
         .padding(16)
         .frame(width: 360)
@@ -526,11 +525,6 @@ private struct ConnectionBadge: View {
     }
 }
 
-
-private struct ConsoleHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 620
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
 
 /// Observe the hosting window's actual screen, including moves between displays.
 private struct ConsoleScreenReader: NSViewRepresentable {
