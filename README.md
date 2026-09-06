@@ -112,7 +112,8 @@ The popover is the only window.
 - **This week** — a compact upright/slouch/off-neutral summary stays visible. Expand it for Monday–Sunday stacked bars: green is within sensitivity (including early-cue and look-away-gated time), orange is the grace countdown, red is sustained slouch, and gray is older off-neutral time that predates category splitting. Empty and future dates stay empty. Hover, click, or use the keyboard to select a day and inspect exact durations, percentages, and episodes. Time is monitored only while tracking is enabled, headphones are connected, and the active preset is calibrated.
 - **History** — the expanded area also shows 7, 30, or 90 inclusive local-calendar days, ending today (30 days by default). Daily upright percentages use a fixed 0–100% scale. The dashed trailing trend weights each day by monitored duration over the seven calendar days ending there; its detail shows observed-day and monitored-time coverage. Missing dates break both lines, so gaps never imply continuous measurement. The comparison uses the latest seven days versus the preceding seven only when both contain monitored time.
 - **Desk / Sofa** — two saved neutrals. Switching applies that preset immediately. An uncalibrated preset pauses the gauge and weekly stats until you calibrate it.
-- **Options** (collapsed by default) — click anywhere on the row to open grouped Monitoring, Reminders, Appearance, and Pause & feedback controls. These include tracking, sensitivity, grace, head-turn behavior, overlay style and strength, sound, icon style, tint, snooze, and the optional sit-up chime.
+- **Options** (collapsed by default) — click anywhere on the row to open grouped Monitoring, Breaks, Reminders, Appearance, and Pause & feedback controls. These include tracking, sensitivity, grace, head-turn behavior, break reminders, overlay style and strength, sound, icon style, tint, snooze, and the optional sit-up chime.
+- **Breaks** — off by default. When enabled, a countdown appears in the menu bar and at the top of the popover. At zero, AirPosture plays the selected sound and a Walk, Water, or Eyes banner (Mix rotates those three). Snooze and Focus silence that tap; the next interval starts immediately with no backlog. Breaks never draw the slouch overlay and do not change weekly stats.
 
 Snooze hides the overlay and mutes sound and banners. Tracking and the week counters keep running. **Resume** clears snooze. Snooze is in-memory only; quitting AirPosture ends it.
 
@@ -120,6 +121,7 @@ Snooze hides the overlay and mutes sound and banners. Tracking and the week coun
 
 | Control | Default | Notes |
 | --- | --- | --- |
+| Break reminders | Off | Repeating interval 5–120 minutes (default 45). Walk / Water / Eyes / Mix. |
 | Warning style | Glow | Also Border, Dim, Blur (public system blur only), or Off. Reduce Transparency turns Glow/Blur into Dim. |
 | Early visual cue | On | Start point 10–100% of the existing sensitivity ellipse in 5% steps; default 70%. Turning it off keeps the overlay hidden until grace expires and does not change scoring. |
 | Fade-in | 3 seconds | 0.5–10 seconds in 0.5-second steps. Applies to the selected overlay response. |

@@ -68,6 +68,7 @@ private struct ScrollCheck {
         check(scroll.horizontalScrollElasticity == .none, "horizontal rubber-banding is disabled")
         check(scroll.verticalScrollElasticity == .none, "vertical rubber-banding is disabled")
         check(!scroll.hasHorizontalScroller, "horizontal scroller stays disabled")
+        check(!scroll.hasVerticalScroller, "vertical scroller stays disabled")
 
         let clip = scroll.contentView
         clip.setBoundsOrigin(NSPoint(x: 100, y: 200))
@@ -163,6 +164,8 @@ private struct ScrollCheck {
             }
             check(scroll.horizontalScrollElasticity == .none && scroll.verticalScrollElasticity == .none,
                   "SwiftUI content resizing preserves disabled elasticity")
+            check(!scroll.hasHorizontalScroller && !scroll.hasVerticalScroller,
+                  "SwiftUI content resizing keeps both scrollers hidden")
             scroll.contentView.setBoundsOrigin(NSPoint(x: 30, y: 0))
             settleScrollCorrections()
             check(scroll.contentView.bounds.minX == 0, "SwiftUI installs the horizontal boundary helper")

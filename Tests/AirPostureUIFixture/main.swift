@@ -10,6 +10,7 @@ import SwiftUI
     @Published var store: WeeklyAnalyticsStore
     let settings: AirPostureSettings
     let tracker: PostureTrackingManager
+    let breakClock: BreakReminderClock
     init() {
         UserDefaults.standard.set(false, forKey: "isTrackingEnabled")
         settings = AirPostureSettings()
@@ -23,6 +24,7 @@ import SwiftUI
         }
         tracker.configure(settings: settings)
         AlertService.shared.configure(settings: settings)
+        breakClock = BreakReminderClock(settings: settings, alerts: .shared)
         store = Self.makeStore(.mixed)
     }
     private static func makeDays(_ scenario: Scenario, now: Date = Date(), calendar: Calendar = .current) -> [String: DayBucket] {
@@ -98,6 +100,7 @@ struct FixtureView: View {
             Group {
                 if page == "Console" {
                     MenuBarView().environmentObject(state.tracker).environmentObject(state.settings).environmentObject(state.store)
+                        .environmentObject(state.breakClock)
                 } else if page == "Reminders" {
                     ScrollView(.vertical) {
                         ReminderOptionsView(settings: state.settings).padding(16).frame(width: 360)

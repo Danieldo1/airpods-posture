@@ -13,10 +13,28 @@ struct AirPostureMacApp: App {
                 .environmentObject(session.settings)
                 .environmentObject(session.weekStore)
                 .environmentObject(session.overlayManager)
+                .environmentObject(session.breakClock)
         } label: {
-            MenuBarIcon(tracker: session.tracker, settings: session.settings)
+            MenuBarStatusLabel(tracker: session.tracker, settings: session.settings, breakClock: session.breakClock)
         }
         .menuBarExtraStyle(.window)
+    }
+}
+
+struct MenuBarStatusLabel: View {
+    @ObservedObject var tracker: PostureTrackingManager
+    @ObservedObject var settings: AirPostureSettings
+    @ObservedObject var breakClock: BreakReminderClock
+
+    var body: some View {
+        HStack(spacing: 4) {
+            MenuBarIcon(tracker: tracker, settings: settings, breakClock: breakClock)
+            if breakClock.isEnabled {
+                Text(breakClock.statusItemText)
+                    .font(.caption.monospacedDigit())
+                    .accessibilityHidden(true)
+            }
+        }
     }
 }
 
@@ -26,6 +44,7 @@ final class AppSession: ObservableObject {
     let settings: AirPostureSettings
     let overlayManager: WarningOverlayManager
     let weekStore: WeeklyAnalyticsStore
+    let breakClock: BreakReminderClock
 
     init() {
         let tracker = PostureTrackingManager()
@@ -36,6 +55,7 @@ final class AppSession: ObservableObject {
         self.weekStore = WeeklyAnalyticsStore(tracker: tracker)
         tracker.configure(settings: settings)
         AlertService.shared.configure(settings: settings)
+        self.breakClock = BreakReminderClock(settings: settings, alerts: .shared)
     }
 }
 

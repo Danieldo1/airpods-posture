@@ -225,7 +225,7 @@ private func checkPreviewErrorRecoveryAndWarningPolicy() {
         playback: playback,
         now: { now },
         shouldSkipBanner: { skipBanner },
-        postNotification: { bannerCount += 1 }
+        postNotification: { _ in bannerCount += 1 }
     )
     service.configure(settings: settings)
 
@@ -332,6 +332,171 @@ private func checkNativeSamePackFallbackOwnership() async {
     check(previewEvents.filter { $0 == .finished(true) }.count == 1, "replacement preview completes independently")
 }
 
+@MainActor
+private func checkBreakReminderPolicy() {
+    let (defaults, suite) = isolatedDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let settings = AirPostureSettings(defaults: defaults)
+    settings.soundPack = .bottle
+    settings.soundVolume = 0.4
+    let playback = PlaybackSpy()
+    var skipBanner = false
+    var identifiers: [String] = []
+    let service = AlertService(
+        playback: playback,
+        now: Date.init,
+        shouldSkipBanner: { skipBanner },
+        postNotification: { identifiers.append($0) }
+    )
+    service.configure(settings: settings)
+
+    let banner = BreakBanner(title: "Drink some water", body: "Take a sip and look away from the screen for a moment.")
+
+    settings.snooze(minutes: 5)
+    service.remindBreakIfAllowed(banner: banner)
+    check(playback.requests.isEmpty && identifiers.isEmpty, "snooze suppresses break sound and banner")
+
+    settings.clearSnooze()
+    skipBanner = true
+    service.remindBreakIfAllowed(banner: banner)
+    check(playback.requests.isEmpty && identifiers.isEmpty, "Focus suppresses break sound and banner")
+
+    skipBanner = false
+    service.nudgeIfAllowed(slouchElapsedSeconds: 5, gracePeriodSeconds: 5)
+    check(identifiers == ["airposture.slouch"], "slouch still uses slouch identifier")
+    let slouchRequests = playback.requests.count
+
+    service.remindBreakIfAllowed(banner: banner)
+    check(playback.requests.last == .init(pack: .bottle, volume: 0.4, channel: .warning), "break uses selected warning sound")
+    check(identifiers == ["airposture.slouch", "airposture.break"], "break uses break identifier")
+
+    service.remindBreakIfAllowed(banner: banner)
+    check(playback.requests.count == slouchRequests + 2, "break is not throttled by slouch cooldown")
+    check(identifiers == ["airposture.slouch", "airposture.break", "airposture.break"], "second break still posts")
+}
+
+@MainActor
+private func checkBreakDoesNotConsumeSlouchCooldown() {
+    let (defaults, suite) = isolatedDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let settings = AirPostureSettings(defaults: defaults)
+    settings.soundAfterDoubleGrace = true
+    let playback = PlaybackSpy()
+    var now = Date()
+    var identifiers: [String] = []
+    let service = AlertService(
+        playback: playback,
+        now: { now },
+        shouldSkipBanner: { false },
+        postNotification: { identifiers.append($0) }
+    )
+    let banner = BreakReminder.banner(kind: .walk, mixIndex: 0)
+    service.remindBreakIfAllowed(banner: banner)
+    check(playback.requests.isEmpty && identifiers.isEmpty, "unconfigured break does nothing")
+    service.configure(settings: settings)
+    service.remindBreakIfAllowed(banner: banner)
+    service.nudgeIfAllowed(slouchElapsedSeconds: 10, gracePeriodSeconds: 5)
+    check(identifiers == ["airposture.break", "airposture.slouch"], "break bypasses double grace and does not start slouch cooldown")
+
+    now.addTimeInterval(44)
+    service.nudgeIfAllowed(slouchElapsedSeconds: 10, gracePeriodSeconds: 5)
+    check(identifiers.count == 2, "slouch remains throttled before 45 seconds")
+    service.remindBreakIfAllowed(banner: banner)
+    now.addTimeInterval(1)
+    service.nudgeIfAllowed(slouchElapsedSeconds: 10, gracePeriodSeconds: 5)
+    check(identifiers == ["airposture.break", "airposture.slouch", "airposture.break", "airposture.slouch"], "break does not extend slouch cooldown")
+    check(playback.requests.count == 4, "only eligible alerts request sound")
+}
+
+@MainActor
+private func finishBreakSettingsChange() async {
+    await withCheckedContinuation { continuation in
+        DispatchQueue.main.async { continuation.resume() }
+    }
+}
+
+@MainActor
+private func checkBreakReminderClockScheduling() async {
+    let (defaults, suite) = isolatedDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let settings = AirPostureSettings(defaults: defaults)
+    let playback = PlaybackSpy()
+    var now = Date()
+    var focused = false
+    var identifiers: [String] = []
+    let service = AlertService(
+        playback: playback,
+        now: { now },
+        shouldSkipBanner: { focused },
+        postNotification: { identifiers.append($0) }
+    )
+    service.configure(settings: settings)
+    let clock = BreakReminderClock(settings: settings, alerts: service, now: { now }, isFocusSuppressing: { focused })
+    check(!clock.isEnabled && clock.remainingSeconds == 0, "disabled clock has no countdown")
+
+    settings.breakRemindersEnabled = true
+    await finishBreakSettingsChange()
+    check(clock.isEnabled && clock.remainingSeconds == 2700, "enable subscription starts a full interval after settings change")
+    now.addTimeInterval(60)
+    clock.evaluate()
+    check(clock.remainingSeconds == 2640, "clock follows wall time without headphone tracking")
+    settings.breakIntervalMinutes = 5
+    await finishBreakSettingsChange()
+    check(clock.remainingSeconds == 300, "interval subscription restarts immediately")
+    now.addTimeInterval(299.8)
+    clock.evaluate()
+    check(clock.remainingSeconds == 1 && identifiers.isEmpty, "clock rounds up and does not fire early")
+    now.addTimeInterval(0.2)
+    clock.evaluate()
+    check(identifiers == ["airposture.break"] && settings.breakMixIndex == 1, "due clock fires once and advances mix")
+    check(clock.remainingSeconds == 300, "due clock starts a fresh full interval")
+    clock.evaluate()
+    check(identifiers.count == 1, "same due evaluation cannot duplicate a break")
+
+    settings.snooze(minutes: 5)
+    now.addTimeInterval(300)
+    clock.evaluate()
+    check(identifiers.count == 1 && settings.breakMixIndex == 2 && clock.remainingSeconds == 300, "snoozed due clock advances without sound, banner, or backlog")
+    settings.clearSnooze()
+    focused = true
+    now.addTimeInterval(300)
+    clock.evaluate()
+    check(identifiers.count == 1 && settings.breakMixIndex == 3 && clock.remainingSeconds == 300, "focused due clock advances without sound, banner, or backlog")
+    focused = false
+    now.addTimeInterval(310)
+    clock.evaluate()
+    check(identifiers.count == 1 && settings.breakMixIndex == 4 && clock.remainingSeconds == 300, "missed fire is skipped and rescheduled from now")
+    check(playback.requests.count == 1, "suppressed and missed fires request no sound")
+
+    settings.breakRemindersEnabled = false
+    await finishBreakSettingsChange()
+    check(!clock.isEnabled && clock.remainingSeconds == 0, "disable subscription clears countdown")
+    now.addTimeInterval(3000)
+    clock.evaluate()
+    check(identifiers.count == 1, "disabled clock never fires")
+    settings.breakRemindersEnabled = true
+    await finishBreakSettingsChange()
+    check(clock.remainingSeconds == 300, "re-enable starts full interval")
+    now.addTimeInterval(60)
+    settings.breakKind = .water
+    clock.evaluate()
+    check(clock.remainingSeconds == 240, "kind change preserves current interval")
+    settings.breakRemindersEnabled = false
+    settings.breakRemindersEnabled = true
+    await finishBreakSettingsChange()
+    check(clock.remainingSeconds == 300, "rapid off-on still resets interval")
+
+    now.addTimeInterval(4000)
+    NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.didWakeNotification, object: nil)
+    await finishBreakSettingsChange()
+    check(clock.remainingSeconds == 300 && identifiers.count == 1, "wake skips expired deadline and starts full interval")
+    now.addTimeInterval(10)
+    let relaunched = BreakReminderClock(settings: settings, alerts: service, now: { now }, isFocusSuppressing: { focused })
+    check(relaunched.remainingSeconds == 300, "launch never restores leftover seconds")
+    settings.breakRemindersEnabled = false
+    await finishBreakSettingsChange()
+}
+
 @main
 private struct AirPostureSoundCheck {
     @MainActor
@@ -343,6 +508,9 @@ private struct AirPostureSoundCheck {
         checkThrowAndAsynchronousFailureFallback()
         checkSecondPreviewReplacesFirst()
         checkPreviewErrorRecoveryAndWarningPolicy()
+        checkBreakReminderPolicy()
+        checkBreakDoesNotConsumeSlouchCooldown()
+        await checkBreakReminderClockScheduling()
 
         if failures > 0 {
             FileHandle.standardError.write(Data("\(failures) sound check(s) failed\n".utf8))

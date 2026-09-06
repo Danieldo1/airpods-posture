@@ -53,6 +53,7 @@ struct ConsoleScrollBehavior: NSViewRepresentable {
             }
             guard let scroll else { return }
             if scroll.hasHorizontalScroller { scroll.hasHorizontalScroller = false }
+            if scroll.hasVerticalScroller { scroll.hasVerticalScroller = false }
             if scroll.horizontalScrollElasticity != .none { scroll.horizontalScrollElasticity = .none }
             if scroll.verticalScrollElasticity != .none { scroll.verticalScrollElasticity = .none }
             scheduleHorizontalLock()

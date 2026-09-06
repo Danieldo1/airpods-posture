@@ -1,10 +1,14 @@
 import AppKit
 import SwiftUI
+#if SWIFT_PACKAGE
+import AirPostureCore
+#endif
 
 struct MenuBarView: View {
     @EnvironmentObject private var tracker: PostureTrackingManager
     @EnvironmentObject private var settings: AirPostureSettings
     @EnvironmentObject private var weekStore: WeeklyAnalyticsStore
+    @EnvironmentObject private var breakClock: BreakReminderClock
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var optionsExpanded = false
@@ -14,7 +18,13 @@ struct MenuBarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView(.vertical, showsIndicators: true) {
+            header
+                .padding(16)
+                .fixedSize(horizontal: false, vertical: true)
+            Divider()
+                .padding(.horizontal, 16)
+
+            ScrollView(.vertical, showsIndicators: false) {
                 content
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(ConsoleScrollBehavior())
@@ -35,7 +45,9 @@ struct MenuBarView: View {
 
     private var content: some View {
         VStack(alignment: .leading, spacing: 16) {
-            header
+            if breakClock.isEnabled {
+                breakCountdown
+            }
             PostureGaugeView(
                 readings: tracker.liveReadings,
                 showTurnValue: settings.lookAwayGateEnabled || settings.showHeadTurnEnabled,
@@ -64,6 +76,30 @@ struct MenuBarView: View {
         }
         .padding(16)
         .frame(width: 360)
+    }
+
+    private var breakCountdown: some View {
+        HStack(spacing: 8) {
+            Image(systemName: breakSymbol)
+            Text(breakClock.popoverText)
+                .font(.body.monospacedDigit())
+            Text("to break")
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(settings.breakKind.title)
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Break reminder, \(breakClock.accessibilityRemaining) remaining, \(settings.breakKind.title)")
+    }
+
+    private var breakSymbol: String {
+        switch settings.breakKind {
+        case .walk: "figure.walk"
+        case .water: "drop"
+        case .eyes: "eye"
+        case .mix: "clock"
+        }
     }
 
     private var header: some View {
@@ -181,6 +217,36 @@ struct MenuBarView: View {
                                     help: "Rotate the bust left and right with your heading. Does not change scoring."
                                 )
 
+                            }
+                        }
+
+                        settingsGroup("Breaks", systemImage: "cup.and.saucer") {
+                            VStack(alignment: .leading, spacing: 12) {
+                                settingsToggle(
+                                    "Break reminders",
+                                    isOn: $settings.breakRemindersEnabled,
+                                    help: "Repeating banner and sound to stand up, drink water, or rest your eyes. Off by default."
+                                )
+                                sliderRow(
+                                    title: "Interval",
+                                    valueText: "\(Int(settings.breakIntervalMinutes))m",
+                                    value: $settings.breakIntervalMinutes,
+                                    range: 5...120,
+                                    step: 5,
+                                    accessibilityValue: "\(Int(settings.breakIntervalMinutes)) minutes",
+                                    minLabel: "5m",
+                                    maxLabel: "120m",
+                                    help: "How long between break reminders."
+                                )
+                                .disabled(!settings.breakRemindersEnabled)
+                                .opacity(settings.breakRemindersEnabled ? 1 : 0.45)
+                                labeledPicker("Break type", selection: $settings.breakKind) {
+                                    ForEach(BreakKind.allCases) { kind in
+                                        Text(kind.title).tag(kind)
+                                    }
+                                }
+                                .disabled(!settings.breakRemindersEnabled)
+                                .opacity(settings.breakRemindersEnabled ? 1 : 0.45)
                             }
                         }
 

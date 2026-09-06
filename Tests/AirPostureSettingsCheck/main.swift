@@ -187,10 +187,45 @@ private func checkInvalidStoredColorFallback() {
     }
 }
 
+@MainActor
+private func checkBreakReminderDefaultsAndClamp() {
+    withDefaults { defaults in
+        let settings = AirPostureSettings(defaults: defaults)
+        expectEqual(settings.breakRemindersEnabled, false, "break reminders default off")
+        expectEqual(settings.breakIntervalMinutes, 45, "break interval default")
+        expectEqual(settings.breakKind, .mix, "break kind default mix")
+        expectEqual(settings.breakMixIndex, 0, "mix index default")
+
+        settings.breakIntervalMinutes = 47
+        expectEqual(settings.breakIntervalMinutes, 45, "47 clamps to 45")
+        settings.breakIntervalMinutes = 48
+        expectEqual(settings.breakIntervalMinutes, 50, "48 clamps to 50")
+        settings.breakIntervalMinutes = .infinity
+        expectEqual(settings.breakIntervalMinutes, 45, "non-finite interval falls back")
+
+        settings.breakKind = .walk
+        settings.breakRemindersEnabled = true
+        settings.breakMixIndex = 2
+
+        let reloaded = AirPostureSettings(defaults: defaults)
+        expectEqual(reloaded.breakRemindersEnabled, true, "enabled persists")
+        expectEqual(reloaded.breakIntervalMinutes, 45, "fallback persist after non-finite")
+        expectEqual(reloaded.breakKind, .walk, "kind persists")
+        expectEqual(reloaded.breakMixIndex, 2, "mix index persists")
+    }
+
+    withDefaults { defaults in
+        defaults.set("nope", forKey: "breakKind")
+        let settings = AirPostureSettings(defaults: defaults)
+        expectEqual(settings.breakKind, .mix, "invalid kind falls back to mix")
+    }
+}
+
 @main
 private struct AirPostureSettingsCheck {
     @MainActor
     static func main() {
+        checkBreakReminderDefaultsAndClamp()
         checkFreshDefaultsAndReset()
         checkPerStyleRoundTrip()
         checkOneTimeLegacyMigration()

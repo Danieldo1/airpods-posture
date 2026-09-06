@@ -3,6 +3,9 @@ import Combine
 import Foundation
 import Intents
 import UserNotifications
+#if SWIFT_PACKAGE
+import AirPostureCore
+#endif
 
 @MainActor
 final class AlertService: ObservableObject {
@@ -16,7 +19,7 @@ final class AlertService: ObservableObject {
     private let playback: any SoundPlaybackServing
     private let now: () -> Date
     private let bannerPolicy: (() -> Bool)?
-    private let notificationPoster: (() -> Void)?
+    private let notificationPoster: ((String) -> Void)?
 
     private init() {
         playback = SoundPlayback()
@@ -29,7 +32,7 @@ final class AlertService: ObservableObject {
         playback: any SoundPlaybackServing,
         now: @escaping () -> Date,
         shouldSkipBanner: @escaping () -> Bool,
-        postNotification: @escaping () -> Void
+        postNotification: @escaping (_ identifier: String) -> Void
     ) {
         self.playback = playback
         self.now = now
@@ -77,6 +80,24 @@ final class AlertService: ObservableObject {
         playChime(pack: pack, volume: 0.40 * settings.soundVolume)
     }
 
+    func remindBreakIfAllowed(banner: BreakBanner) {
+        guard let settings, !settings.isSnoozed, !shouldSkipBanner() else { return }
+        playWarningSound(pack: settings.soundPack, volume: settings.soundVolume)
+
+        if let notificationPoster {
+            notificationPoster("airposture.break")
+            return
+        }
+        let content = UNMutableNotificationContent()
+        content.title = banner.title
+        content.body = banner.body
+        content.sound = nil
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: "airposture.break", content: content, trigger: nil),
+            withCompletionHandler: nil
+        )
+    }
+
     func previewSound(pack: SoundPack, volume: Double) {
         play(pack: pack, volume: volume, channel: .preview)
     }
@@ -115,7 +136,7 @@ final class AlertService: ObservableObject {
 
     private func postSitUpNotification() {
         if let notificationPoster {
-            notificationPoster()
+            notificationPoster("airposture.slouch")
             return
         }
         let content = UNMutableNotificationContent()

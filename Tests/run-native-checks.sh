@@ -12,11 +12,13 @@ cd "$ROOT"
 CORE_SOURCES=(Sources/AirPostureCore/*.swift)
 SETTINGS_SOURCES=(
   Sources/AirPostureCore/WarningIntensity.swift
+  Sources/AirPostureCore/BreakReminder.swift
   Sources/AirPostureMac/AirPostureSettings.swift
 )
 SOUND_SOURCES=(
   "${SETTINGS_SOURCES[@]}"
   Sources/AirPostureMac/AlertService.swift
+  Sources/AirPostureMac/BreakReminderClock.swift
 )
 STORE_SOURCES=(
   "${CORE_SOURCES[@]}"

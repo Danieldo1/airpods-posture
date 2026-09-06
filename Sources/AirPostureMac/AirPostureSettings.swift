@@ -204,6 +204,30 @@ final class AirPostureSettings: ObservableObject {
         didSet { defaults.set(soundAfterDoubleGrace, forKey: Key.soundAfterDoubleGrace) }
     }
 
+    @Published var breakRemindersEnabled: Bool {
+        didSet { defaults.set(breakRemindersEnabled, forKey: Key.breakRemindersEnabled) }
+    }
+
+    @Published var breakIntervalMinutes: Double {
+        didSet {
+            let value = Double(BreakReminder.clampIntervalMinutes(breakIntervalMinutes))
+            if value != breakIntervalMinutes {
+                breakIntervalMinutes = value
+                defaults.set(value, forKey: Key.breakIntervalMinutes)
+                return
+            }
+            defaults.set(value, forKey: Key.breakIntervalMinutes)
+        }
+    }
+
+    @Published var breakKind: BreakKind {
+        didSet { defaults.set(breakKind.rawValue, forKey: Key.breakKind) }
+    }
+
+    @Published var breakMixIndex: Int {
+        didSet { defaults.set(breakMixIndex, forKey: Key.breakMixIndex) }
+    }
+
     @Published var iconFamily: IconFamily {
         didSet { defaults.set(iconFamily.rawValue, forKey: Key.iconFamily) }
     }
@@ -254,6 +278,10 @@ final class AirPostureSettings: ObservableObject {
         static let soundPack = "soundPack"
         static let soundVolume = "soundVolume"
         static let soundAfterDoubleGrace = "soundAfterDoubleGrace"
+        static let breakRemindersEnabled = "breakRemindersEnabled"
+        static let breakIntervalMinutes = "breakIntervalMinutes"
+        static let breakKind = "breakKind"
+        static let breakMixIndex = "breakMixIndex"
         static let iconFamily = "iconFamily"
         static let sitUpChimeEnabled = "sitUpChimeEnabled"
         static let lookAwayGateEnabled = "lookAwayGateEnabled"
@@ -310,6 +338,10 @@ final class AirPostureSettings: ObservableObject {
             Key.soundPack: SoundPack.pop.rawValue,
             Key.soundVolume: Volume.fallback,
             Key.soundAfterDoubleGrace: false,
+            Key.breakRemindersEnabled: false,
+            Key.breakIntervalMinutes: BreakReminder.defaultIntervalMinutes,
+            Key.breakKind: BreakKind.mix.rawValue,
+            Key.breakMixIndex: 0,
             Key.iconFamily: IconFamily.postureFigure.rawValue,
             Key.sitUpChimeEnabled: false,
             Key.lookAwayGateEnabled: true,
@@ -345,6 +377,10 @@ final class AirPostureSettings: ObservableObject {
             fallback: Volume.fallback
         )
         soundAfterDoubleGrace = defaults.bool(forKey: Key.soundAfterDoubleGrace)
+        breakRemindersEnabled = defaults.bool(forKey: Key.breakRemindersEnabled)
+        breakIntervalMinutes = Double(BreakReminder.clampIntervalMinutes(defaults.double(forKey: Key.breakIntervalMinutes)))
+        breakKind = Self.decode(defaults.string(forKey: Key.breakKind), fallback: .mix)
+        breakMixIndex = defaults.integer(forKey: Key.breakMixIndex)
         iconFamily = Self.decode(defaults.string(forKey: Key.iconFamily), fallback: .postureFigure)
         sitUpChimeEnabled = defaults.bool(forKey: Key.sitUpChimeEnabled)
         lookAwayGateEnabled = defaults.object(forKey: Key.lookAwayGateEnabled) as? Bool ?? true

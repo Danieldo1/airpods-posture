@@ -4,6 +4,7 @@ import SwiftUI
 struct MenuBarIcon: View {
     @ObservedObject var tracker: PostureTrackingManager
     @ObservedObject var settings: AirPostureSettings
+    @ObservedObject var breakClock: BreakReminderClock
 
     var body: some View {
         Image(nsImage: Self.makeImage(tracker: tracker, family: settings.iconFamily))
@@ -11,6 +12,11 @@ struct MenuBarIcon: View {
     }
 
     private var accessibilityLabel: String {
+        let remaining = breakClock.isEnabled ? ", break in \(breakClock.accessibilityRemaining)" : ""
+        return postureAccessibilityLabel + remaining
+    }
+
+    private var postureAccessibilityLabel: String {
         switch tracker.postureBand {
         case .slouching:
             tracker.dominantAxis == .tilt ? "AirPosture, slouching" : "AirPosture, off center"
