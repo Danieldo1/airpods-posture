@@ -1,0 +1,18 @@
+Upright: alpha bounds 217,32...438,344 at 656×376
+Look right: alpha bounds 217,32...438,344 at 656×376
+Look left: alpha bounds 217,32...438,344 at 656×376
+Slouch: alpha bounds 219,48...436,353 at 656×376
+Lean right: alpha bounds 218,37...453,351 at 656×376
+Lean left: alpha bounds 202,37...437,351 at 656×376
+Chin up: alpha bounds 217,33...438,344 at 656×376
+Combined limit: alpha bounds 177,64...435,363 at 656×376
+Concern: alpha bounds 217,32...438,344 at 656×376
+Blink: alpha bounds 217,32...438,344 at 656×376
+Recovery: alpha bounds 215,32...440,344 at 656×376
+Other limit: alpha bounds 218,38...448,348 at 656×376
+Brow response: alpha bounds 217,32...438,344 at 656×376
+Arm sway: alpha bounds 217,31...438,344 at 656×376
+Inactive: alpha bounds 217,32...438,344 at 656×376
+Animation + rig apply: 0.0102 ms/frame (10,000 iterations, checksum 341.315)
+Offscreen render including readback @656×376: median 1.09 ms, p95 4.56 ms (30 samples)
+These snapshot timings include CPU image readback; they are not live popover GPU utilization or energy measurements.

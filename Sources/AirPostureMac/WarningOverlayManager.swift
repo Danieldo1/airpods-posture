@@ -1,6 +1,9 @@
 import AppKit
 import Combine
 import SwiftUI
+#if SWIFT_PACKAGE
+import AirPostureCore
+#endif
 
 @MainActor
 final class WarningOverlayManager: ObservableObject {
@@ -10,18 +13,13 @@ final class WarningOverlayManager: ObservableObject {
     private var panels: [NSNumber: OverlayPanel] = [:]
     private var tickTimer: Timer?
     private var escapeMonitor: Any?
-    private var slouchVisibleSince: Date?
-    private var fadeStartedAt: Date?
-    private var fadeFromStrength: Double = 0
-    private var lastAppliedStrength: Double = 0
+    private var presentationState = WarningPresentationState()
+    private var lastTickAt: TimeInterval?
     private var observers: [NSObjectProtocol] = []
     private var cancellables: Set<AnyCancellable> = []
 
     private enum Timing {
         static let tick: TimeInterval = 1.0 / 30.0
-        static let rampDuration: TimeInterval = 8
-        static let fadeDuration: TimeInterval = 0.350
-        static let minVisibleFraction = 0.20
     }
 
     init(tracker: PostureTrackingManager, settings: AirPostureSettings) {
@@ -100,64 +98,57 @@ final class WarningOverlayManager: ObservableObject {
     private func tick() {
         settings.clearExpiredSnooze()
 
+        let now = ProcessInfo.processInfo.systemUptime
+        let elapsed = lastTickAt.map { max(now - $0, 0) } ?? 0
+        lastTickAt = now
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        let shouldShow = settings.warningStyle != .off
+        let isEligible = settings.warningStyle != .off
             && !settings.isSnoozed
-            && tracker.isSlouching
+            && tracker.isTrackingEnabled
+            && tracker.connectionStatus == .connected
+            && tracker.isCalibrated
+            && !tracker.didJustCalibrate
+            && !tracker.isLookingAway
 
-        if shouldShow {
-            fadeStartedAt = nil
-            if slouchVisibleSince == nil {
-                slouchVisibleSince = Date()
-            }
-            let strength = currentShowStrength(reduceMotion: reduceMotion)
-            lastAppliedStrength = strength
-            ensurePanels()
-            apply(strength: strength)
-            installEscapeMonitorIfNeeded()
+        guard isEligible else {
+            _ = presentationState.update(
+                target: 0,
+                elapsed: elapsed,
+                fadeIn: settings.overlayFadeInSeconds,
+                reduceMotion: reduceMotion,
+                isEligible: isEligible,
+                referenceID: tracker.activePreset.rawValue
+            )
+            lastTickAt = nil
+            hidePanels()
             return
         }
 
-        slouchVisibleSince = nil
+        let target = WarningIntensity.target(
+            deviation: tracker.normalizedDeviation,
+            graceProgress: tracker.slouchProgressClamped,
+            isSlouching: tracker.isSlouching,
+            earlyEnabled: settings.earlyCueEnabled,
+            onset: settings.cueStartFraction
+        )
+        let fraction = presentationState.update(
+            target: target,
+            elapsed: elapsed,
+            fadeIn: settings.overlayFadeInSeconds,
+            reduceMotion: reduceMotion,
+            isEligible: true,
+            referenceID: tracker.activePreset.rawValue
+        )
+        let strength = fraction * settings.maxOverlayStrength
 
-        guard !panels.isEmpty || lastAppliedStrength > 0 else {
-            removeEscapeMonitor()
+        guard strength > 0 else {
+            hidePanels()
             return
         }
 
-        if reduceMotion {
-            hideImmediately()
-            return
-        }
-
-        if fadeStartedAt == nil {
-            fadeStartedAt = Date()
-            fadeFromStrength = max(lastAppliedStrength, 0.01)
-        }
-
-        let elapsed = Date().timeIntervalSince(fadeStartedAt ?? Date())
-        if elapsed >= Timing.fadeDuration {
-            hideImmediately()
-            return
-        }
-
-        let progress = elapsed / Timing.fadeDuration
-        let strength = fadeFromStrength * (1 - progress)
-        lastAppliedStrength = strength
-        if !panels.isEmpty {
-            apply(strength: strength, windowAlpha: 1 - progress)
-        }
-    }
-
-    private func currentShowStrength(reduceMotion: Bool) -> Double {
-        let maxStrength = settings.maxOverlayStrength
-        if reduceMotion {
-            return maxStrength
-        }
-        let elapsed = Date().timeIntervalSince(slouchVisibleSince ?? Date())
-        let u = min(1, elapsed / Timing.rampDuration)
-        let ramp = u * u * (3 - 2 * u)
-        return (Timing.minVisibleFraction + (1 - Timing.minVisibleFraction) * ramp) * maxStrength
+        ensurePanels()
+        apply(strength: strength)
+        installEscapeMonitorIfNeeded()
     }
 
     private func ensurePanels() {
@@ -181,19 +172,19 @@ final class WarningOverlayManager: ObservableObject {
     }
 
     private func rebuildPanels() {
-        hideImmediately()
+        cancelImmediately()
     }
 
-    private func apply(strength: Double, windowAlpha: CGFloat = 1) {
+    private func apply(strength: Double) {
         let style = resolvedStyle()
-        let tint = settings.overlayTint
+        let color = settings.overlayColor
         let increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
 
         for panel in panels.values {
-            panel.alphaValue = windowAlpha
+            panel.alphaValue = 1
             panel.apply(
                 style: style,
-                tint: tint,
+                color: color,
                 strength: strength,
                 increaseContrast: increaseContrast
             )
@@ -213,9 +204,13 @@ final class WarningOverlayManager: ObservableObject {
         return style
     }
 
-    private func hideImmediately() {
-        fadeStartedAt = nil
-        lastAppliedStrength = 0
+    private func cancelImmediately() {
+        presentationState.reset()
+        lastTickAt = nil
+        hidePanels()
+    }
+
+    private func hidePanels() {
         for panel in panels.values {
             panel.orderOut(nil)
             panel.close()
@@ -275,8 +270,8 @@ private final class OverlayPanel: NSPanel {
         return panel
     }
 
-    func apply(style: WarningStyle, tint: OverlayTint, strength: Double, increaseContrast: Bool) {
-        rootView.apply(style: style, tint: tint, strength: strength, increaseContrast: increaseContrast)
+    func apply(style: WarningStyle, color: OverlayColor, strength: Double, increaseContrast: Bool) {
+        rootView.apply(style: style, color: color, strength: strength, increaseContrast: increaseContrast)
     }
 }
 
@@ -315,19 +310,21 @@ private final class OverlayRootView: NSView {
 
     override var isOpaque: Bool { false }
 
-    func apply(style: WarningStyle, tint: OverlayTint, strength: Double, increaseContrast: Bool) {
+    func apply(style: WarningStyle, color: OverlayColor, strength: Double, increaseContrast: Bool) {
         var resolved = style
         if resolved == .blur && !blurMaterialAvailable {
             resolved = .dim
         }
 
-        blurView.isHidden = resolved != .blur
+        let strength = min(max(strength, 0), 1)
+        blurView.isHidden = resolved != .blur || strength == 0
+        blurView.alphaValue = resolved == .blur ? strength : 0
         if resolved == .blur {
             _ = applyBlurMaterial()
         }
 
         drawView.style = resolved
-        drawView.tint = tint
+        drawView.color = color
         drawView.strength = strength
         drawView.increaseContrast = increaseContrast
         drawView.needsDisplay = true
@@ -341,7 +338,7 @@ private final class OverlayRootView: NSView {
 
 private final class OverlayDrawView: NSView {
     var style: WarningStyle = .glow
-    var tint: OverlayTint = .warm
+    var color: OverlayColor = .warm
     var strength: Double = 0
     var increaseContrast: Bool = false
 
@@ -349,7 +346,7 @@ private final class OverlayDrawView: NSView {
     override var acceptsFirstResponder: Bool { false }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        guard strength > 0, let context = NSGraphicsContext.current?.cgContext else { return }
         let rect = bounds
         switch style {
         case .glow:
@@ -372,8 +369,8 @@ private final class OverlayDrawView: NSView {
         guard maxRadius > 0 else { return }
 
         let center = CGPoint(x: rect.midX, y: rect.midY)
-        let clear = tint.nsColor.withAlphaComponent(0).cgColor
-        let edge = tint.nsColor.withAlphaComponent(edgeAlpha).cgColor
+        let clear = color.nsColor.withAlphaComponent(0).cgColor
+        let edge = color.nsColor.withAlphaComponent(edgeAlpha).cgColor
         let colors = [clear, clear, edge] as CFArray
         let innerStop = min(max(innerRadius / maxRadius, 0.01), 0.98)
         let locations: [CGFloat] = [0, innerStop, 1]
@@ -390,19 +387,19 @@ private final class OverlayDrawView: NSView {
     }
 
     private func drawBorder(in rect: CGRect) {
-        var alpha = 0.45 + 0.45 * strength
+        var alpha = 0.90 * strength
         if increaseContrast {
-            alpha = max(alpha, 0.75)
+            alpha *= 1.15
         }
         let path = NSBezierPath(roundedRect: rect.insetBy(dx: 10, dy: 10), xRadius: 16, yRadius: 16)
-        path.lineWidth = 4 + 10 * strength
-        tint.nsColor.withAlphaComponent(alpha).setStroke()
+        path.lineWidth = 2 + 12 * strength
+        color.nsColor.withAlphaComponent(min(alpha, 1)).setStroke()
         path.stroke()
     }
 
     private func drawDim(in rect: CGRect) {
-        let alpha = clampedAlpha(0.10 + 0.28 * strength, glowOrDim: true)
-        let color = tint.nsColor
+        let alpha = clampedAlpha(0.38 * strength, glowOrDim: true)
+        let color = color.nsColor
         NSColor(
             srgbRed: color.srgbRed * 0.30,
             green: color.srgbGreen * 0.30,
@@ -413,7 +410,7 @@ private final class OverlayDrawView: NSView {
     }
 
     private func drawBlurTint(in rect: CGRect) {
-        tint.nsColor.withAlphaComponent(clampedAlpha(0.06 + 0.16 * strength, glowOrDim: true)).setFill()
+        color.nsColor.withAlphaComponent(clampedAlpha(0.22 * strength, glowOrDim: true)).setFill()
         rect.fill()
     }
 
@@ -426,16 +423,9 @@ private final class OverlayDrawView: NSView {
     }
 }
 
-private extension OverlayTint {
+private extension OverlayColor {
     var nsColor: NSColor {
-        switch self {
-        case .warm:
-            NSColor(srgbRed: 1.00, green: 0.62, blue: 0.11, alpha: 1)
-        case .cool:
-            NSColor(srgbRed: 0.18, green: 0.70, blue: 0.68, alpha: 1)
-        case .alert:
-            NSColor(srgbRed: 0.91, green: 0.22, blue: 0.21, alpha: 1)
-        }
+        NSColor(srgbRed: red, green: green, blue: blue, alpha: 1)
     }
 }
 

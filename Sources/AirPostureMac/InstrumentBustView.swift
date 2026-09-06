@@ -12,55 +12,196 @@ struct InstrumentBustView: View {
     let band: PostureBand
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @StateObject private var lifetime = BustViewLifetime()
+#if DEBUG
+    @StateObject private var debugState = BustDebugState()
+#endif
 
     var body: some View {
-        InstrumentBustRepresentable(
-            pitch: pitch,
-            roll: roll,
-            yaw: yaw,
-            band: band,
-            animatesPoseChanges: !reduceMotion
-        )
+        representation
             .allowsHitTesting(false)
             .accessibilityHidden(true)
-            .onDisappear {
-                InstrumentBustRepresentable.pauseIfNeeded()
+            .overlay(alignment: .topTrailing) {
+#if DEBUG
+                if BustDebugState.isEnabled {
+                    BustDebugView(state: debugState)
+                }
+#endif
             }
+            .onAppear { lifetime.setPresented(true) }
+            .onDisappear { lifetime.setPresented(false) }
+    }
+
+    private var representation: InstrumentBustRepresentable {
+        var representation = InstrumentBustRepresentable(
+            input: BustTrackingPose(pitch: pitch, roll: roll, yaw: yaw, expression: expression),
+            config: animationConfig,
+            reduceMotion: reduceMotion,
+            lifetime: lifetime
+        )
+#if DEBUG
+        if BustDebugState.isEnabled {
+            representation.debugReadout = debugState.readout
+        }
+#endif
+        return representation
+    }
+
+    private var animationConfig: BustAnimationConfig {
+#if DEBUG
+        if BustDebugState.isEnabled { return debugState.config }
+#endif
+        return BustAnimationConfig()
+    }
+
+    private var expression: BustExpression {
+        switch band {
+        case .upright: .upright
+        case .leaning: .leaning
+        case .slouching: .slouching
+        case .paused, .uncalibrated, .waitingForHeadphones: .inactive
+        }
+    }
+}
+
+/// Main-thread lifecycle owner. Its weak reference belongs to this SwiftUI
+/// identity only, so disappearing views cannot pause another avatar instance.
+private final class BustViewLifetime: ObservableObject {
+    private weak var view: InstrumentSCNView?
+    private var isPresented = false
+
+    func attach(_ view: InstrumentSCNView) {
+        self.view = view
+        view.setPresented(isPresented)
+    }
+
+    func detach(_ view: InstrumentSCNView) {
+        view.setPresented(false)
+        if self.view === view { self.view = nil }
+    }
+
+    func setPresented(_ isPresented: Bool) {
+        self.isPresented = isPresented
+        view?.setPresented(isPresented)
+    }
+}
+
+/// Only value data crosses from SwiftUI's main thread to SceneKit's render
+/// thread. Neither thread holds the lock while doing scene or UI work.
+private final class BustRendererMailbox {
+    struct Snapshot {
+        var input = BustTrackingPose()
+        var config = BustAnimationConfig()
+        var reduceMotion = false
+        var isActive = false
+        var activation: UInt64 = 0
+    }
+
+    private let lock = NSLock()
+    private var value = Snapshot()
+
+    func update(input: BustTrackingPose, config: BustAnimationConfig, reduceMotion: Bool) {
+        lock.lock()
+        value.input = input
+        value.config = config
+        value.reduceMotion = reduceMotion
+        lock.unlock()
+    }
+
+    func setActive(_ isActive: Bool) {
+        lock.lock()
+        if isActive != value.isActive {
+            value.isActive = isActive
+            value.activation &+= 1
+        }
+        lock.unlock()
+    }
+
+    func read() -> Snapshot {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
     }
 }
 
 private struct InstrumentBustRepresentable: NSViewRepresentable {
-    let pitch: Double
-    let roll: Double
-    let yaw: Double
-    let band: PostureBand
-    let animatesPoseChanges: Bool
+    let input: BustTrackingPose
+    let config: BustAnimationConfig
+    let reduceMotion: Bool
+    let lifetime: BustViewLifetime
+#if DEBUG
+    var debugReadout: BustDebugReadoutState?
+#endif
 
-    final class Coordinator {
-        var bustRoot: SCNNode?
-        var neckPivot: SCNNode?
-        var headPivot: SCNNode?
-        var neckOrigin = SCNVector3Zero
-        var headOrigin = SCNVector3Zero
-        var eyeNodes: [SCNNode] = []
-        var porcelainMaterial: SCNMaterial?
-        var statusMaterial: SCNMaterial?
-        var sceneView: SCNView?
-        var didLogFailure = false
-    }
+    final class Coordinator: NSObject, SCNSceneRendererDelegate {
+        let mailbox = BustRendererMailbox()
+        let rig: BustSceneRig?
+        let lifetime: BustViewLifetime
+        // Only renderer(_:updateAtTime:) touches animation state.
+        private var processor = BustAnimationProcessor()
+        private var previousTime: TimeInterval?
+        private var previousActivation: UInt64 = 0
+#if DEBUG
+        weak var debugReadout: BustDebugReadoutState?
+        private var lastDebugTime = -Double.infinity
+#endif
 
-    static weak var activeView: SCNView?
+        init(lifetime: BustViewLifetime) {
+            self.lifetime = lifetime
+            do {
+                if let assetURL = InstrumentBustRepresentable.bustAssetURL {
+                    rig = try BustSceneRig(assetURL: assetURL)
+                } else {
+                    rig = nil
+                    NSLog("AirPosture: avatar asset is unavailable.")
+                }
+            } catch {
+                rig = nil
+                NSLog("AirPosture: avatar could not load: %@", error.localizedDescription)
+            }
+            super.init()
+        }
 
-    static func pauseIfNeeded() {
-        activeView?.isPlaying = false
+        func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
+            let state = mailbox.read()
+            guard state.isActive, let rig else {
+                previousTime = nil
+                return
+            }
+            if previousActivation != state.activation {
+                previousTime = nil
+                previousActivation = state.activation
+            }
+            let delta = previousTime.map { max(0, min(time - $0, 0.1)) } ?? (1.0 / 30.0)
+            previousTime = time
+            processor.config = state.config
+            let output = processor.step(input: state.input, deltaTime: delta, reduceMotion: state.reduceMotion)
+            rig.apply(output)
+#if DEBUG
+            if let debugReadout, time - lastDebugTime >= 0.2 {
+                lastDebugTime = time
+                let snapshot = BustDebugSnapshot(input: state.input, output: output,
+                                                 boneText: rig.debugTransformText())
+                DispatchQueue.main.async { [weak debugReadout] in
+                    debugReadout?.snapshot = snapshot
+                }
+            }
+#endif
+        }
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator()
+        let coordinator = Coordinator(lifetime: lifetime)
+#if DEBUG
+        coordinator.debugReadout = debugReadout
+#endif
+        return coordinator
     }
 
-    func makeNSView(context: Context) -> NSView {
-        let view = InstrumentSCNView(frame: .zero)
+    func makeNSView(context: Context) -> InstrumentSCNView {
+        let coordinator = context.coordinator
+        coordinator.mailbox.update(input: input, config: config, reduceMotion: reduceMotion)
+        let view = InstrumentSCNView(mailbox: coordinator.mailbox)
         view.backgroundColor = .clear
         view.wantsLayer = true
         view.layer?.isOpaque = false
@@ -68,278 +209,30 @@ private struct InstrumentBustRepresentable: NSViewRepresentable {
         view.autoenablesDefaultLighting = false
         view.antialiasingMode = .multisampling4X
         view.preferredFramesPerSecond = 30
-
-        guard let scene = Self.makeScene(coordinator: context.coordinator) else {
-            if !context.coordinator.didLogFailure {
-                context.coordinator.didLogFailure = true
-                NSLog("AirPosture: SceneKit bust unavailable; pad will draw without a figure.")
-            }
-            let fallback = NSView(frame: .zero)
-            fallback.wantsLayer = true
-            fallback.layer?.backgroundColor = NSColor.clear.cgColor
-            return fallback
-        }
-
-        view.scene = scene
-        view.isPlaying = true
-        context.coordinator.sceneView = view
-        Self.activeView = view
-        applyPose(to: context.coordinator)
+        view.scene = coordinator.rig?.scene
+        view.pointOfView = coordinator.rig?.cameraNode
+        view.delegate = coordinator
+        lifetime.attach(view)
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        guard nsView is SCNView else {
-            return
-        }
-        context.coordinator.sceneView?.isPlaying = true
-        Self.activeView = context.coordinator.sceneView
-        applyPose(to: context.coordinator)
+    func updateNSView(_ view: InstrumentSCNView, context: Context) {
+        context.coordinator.mailbox.update(input: input, config: config, reduceMotion: reduceMotion)
+        // Reconcile attachment and window visibility on the main thread. Pose
+        // updates never touch the scene graph or restart an animation action.
+        view.updatePlayback()
     }
 
-    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
-        (nsView as? SCNView)?.isPlaying = false
-        if activeView === nsView {
-            activeView = nil
-        }
-        coordinator.sceneView = nil
-    }
-
-    private func applyPose(to coordinator: Coordinator) {
-        let pose = PostureGaugeMapping.bustPose(pitch: pitch, roll: roll, yaw: yaw)
-        let emission = Self.emission(for: band)
-
-        SCNTransaction.begin()
-        SCNTransaction.animationDuration = animatesPoseChanges ? 0.075 : 0
-        SCNTransaction.animationTimingFunction = CAMediaTimingFunction(name: .easeOut)
-        coordinator.neckPivot?.eulerAngles = Self.vector(pose.neckEulerRadians)
-        coordinator.headPivot?.eulerAngles = Self.vector(pose.headEulerRadians)
-        coordinator.neckPivot?.position = Self.offset(
-            origin: coordinator.neckOrigin,
-            by: pose.neckOffset
-        )
-        coordinator.headPivot?.position = Self.offset(
-            origin: coordinator.headOrigin,
-            by: pose.headOffset
-        )
-        SCNTransaction.commit()
-
-        // The material change communicates a discrete posture state, so it
-        // should not tween through intermediate colors as the pose settles.
-        SCNTransaction.begin()
-        SCNTransaction.animationDuration = 0
-        coordinator.porcelainMaterial?.emission.contents = emission.color
-        coordinator.porcelainMaterial?.emission.intensity = CGFloat(emission.porcelainIntensity)
-        coordinator.statusMaterial?.emission.contents = emission.color
-        coordinator.statusMaterial?.emission.intensity = CGFloat(emission.collarIntensity)
-        SCNTransaction.commit()
-
-        updateBlinkAnimation(for: coordinator)
-    }
-
-    private static func vector(_ vector: BustVector3) -> SCNVector3 {
-        SCNVector3(Float(vector.x), Float(vector.y), Float(vector.z))
-    }
-
-    private static func offset(origin: SCNVector3, by offset: BustVector3) -> SCNVector3 {
-        let x = origin.x + CGFloat(offset.x)
-        let y = origin.y + CGFloat(offset.y)
-        let z = origin.z + CGFloat(offset.z)
-        return SCNVector3(x, y, z)
-    }
-
-    private static func emission(
-        for band: PostureBand
-    ) -> (color: NSColor, porcelainIntensity: Double, collarIntensity: Double) {
-        switch band {
-        case .upright:
-            (NSColor.systemGreen, 0.055, 1.25)
-        case .leaning:
-            (NSColor.systemOrange, 0.065, 1.45)
-        case .slouching:
-            (NSColor.systemRed, 0.075, 1.65)
-        case .paused, .uncalibrated, .waitingForHeadphones:
-            (NSColor.white, 0.015, 0.18)
-        }
-    }
-
-    private static func makeScene(coordinator: Coordinator) -> SCNScene? {
-        guard
-            let assetURL = bustAssetURL,
-            let assetScene = try? SCNScene(url: assetURL),
-            let importedRoot = assetScene.rootNode.childNode(
-                withName: "AirPostureBust",
-                recursively: false
-            )
-        else {
-            return nil
-        }
-
-        let scene = SCNScene()
-
-        let root = SCNNode()
-        root.name = "bustRoot"
-        // Blender's USD orientation conversion produces a Y-up model whose
-        // face points toward -Z. Turn the imported sculpture toward the
-        // existing +Z SceneKit camera and fill the enlarged hero stage.
-        root.eulerAngles.y = .pi
-        root.scale = SCNVector3(1.35, 1.35, 1.35)
-        scene.rootNode.addChildNode(root)
-        coordinator.bustRoot = root
-
-        importedRoot.removeFromParentNode()
-        importedRoot.childNode(withName: "env_light", recursively: false)?.removeFromParentNode()
-        root.addChildNode(importedRoot)
-
-        guard
-            let neckPivot = importedRoot.childNode(withName: "CTRL_neck", recursively: true),
-            let headPivot = importedRoot.childNode(withName: "CTRL_head", recursively: true)
-        else {
-            return nil
-        }
-        coordinator.neckPivot = neckPivot
-        coordinator.headPivot = headPivot
-        coordinator.neckOrigin = neckPivot.position
-        coordinator.headOrigin = headPivot.position
-        coordinator.eyeNodes = ["GraphiteEyeLeft", "GraphiteEyeRight"].compactMap {
-            importedRoot.childNode(withName: $0, recursively: true)
-        }
-
-        configureMaterials(in: importedRoot, coordinator: coordinator)
-
-        let cameraNode = SCNNode()
-        let camera = SCNCamera()
-        camera.usesOrthographicProjection = true
-        camera.orthographicScale = 1.55
-        camera.zNear = 0.1
-        camera.zFar = 20
-        cameraNode.camera = camera
-        cameraNode.position = SCNVector3(0, 0.02, 4)
-        cameraNode.look(at: SCNVector3(0, -0.04, 0))
-        scene.rootNode.addChildNode(cameraNode)
-
-        let key = SCNNode()
-        key.light = SCNLight()
-        key.light?.type = .omni
-        key.light?.intensity = 100
-        key.position = SCNVector3(-2.2, 2.6, 3.4)
-        scene.rootNode.addChildNode(key)
-
-        let fill = SCNNode()
-        fill.light = SCNLight()
-        fill.light?.type = .omni
-        fill.light?.intensity = 35
-        fill.position = SCNVector3(0.4, 0.2, 5.5)
-        scene.rootNode.addChildNode(fill)
-
-        let rim = SCNNode()
-        rim.light = SCNLight()
-        rim.light?.type = .omni
-        rim.light?.intensity = 60
-        rim.light?.color = NSColor(calibratedRed: 0.42, green: 0.60, blue: 0.82, alpha: 1)
-        rim.position = SCNVector3(2.2, 1.5, -2.0)
-        scene.rootNode.addChildNode(rim)
-
-        coordinator.bustRoot = root
-        return scene
-    }
-
-    private static func configureMaterials(in root: SCNNode, coordinator: Coordinator) {
-        root.enumerateChildNodes { node, _ in
-            guard let geometry = node.geometry else {
-                return
-            }
-
-            for (index, importedMaterial) in geometry.materials.enumerated() {
-                let material = SCNMaterial()
-                material.name = importedMaterial.name
-                material.lightingModel = .physicallyBased
-                material.isDoubleSided = true
-
-                switch importedMaterial.name {
-                case "Porcelain":
-                    material.diffuse.contents = NSColor(
-                        calibratedRed: 0.25,
-                        green: 0.31,
-                        blue: 0.38,
-                        alpha: 1
-                    )
-                    material.metalness.contents = 0.22
-                    material.roughness.contents = 0.36
-                    coordinator.porcelainMaterial = material
-                case "Graphite":
-                    material.diffuse.contents = NSColor(
-                        calibratedRed: 0.025,
-                        green: 0.035,
-                        blue: 0.055,
-                        alpha: 1
-                    )
-                    material.metalness.contents = 0.72
-                    material.roughness.contents = 0.23
-                case "StatusGlow":
-                    material.diffuse.contents = NSColor(calibratedWhite: 0.07, alpha: 1)
-                    material.metalness.contents = 0.35
-                    material.roughness.contents = 0.20
-                    coordinator.statusMaterial = material
-                default:
-                    break
-                }
-
-                geometry.replaceMaterial(at: index, with: material)
-            }
-        }
-    }
-
-    private func updateBlinkAnimation(for coordinator: Coordinator) {
-        let actionKey = "naturalBlink"
-
-        guard animatesPoseChanges else {
-            coordinator.bustRoot?.removeAction(forKey: actionKey)
-            for eye in coordinator.eyeNodes {
-                eye.scale.y = 1
-            }
-            return
-        }
-
-        guard
-            coordinator.eyeNodes.count == 2,
-            coordinator.bustRoot?.action(forKey: actionKey) == nil
-        else {
-            return
-        }
-
-        coordinator.bustRoot?.runAction(
-            Self.blinkSequence(coordinator: coordinator),
-            forKey: actionKey
-        )
-    }
-
-    private static func blinkSequence(coordinator: Coordinator) -> SCNAction {
-        let wait = SCNAction.wait(duration: 3.8, withRange: 2.2)
-        let close = SCNAction.customAction(duration: 0.065) { [weak coordinator] _, elapsed in
-            let progress = min(max(elapsed / 0.065, 0), 1)
-            coordinator?.eyeNodes.forEach { $0.scale.y = 1 - 0.92 * progress }
-        }
-        close.timingMode = .easeIn
-
-        let hold = SCNAction.wait(duration: 0.035)
-        let open = SCNAction.customAction(duration: 0.10) { [weak coordinator] _, elapsed in
-            let progress = min(max(elapsed / 0.10, 0), 1)
-            coordinator?.eyeNodes.forEach { $0.scale.y = 0.08 + 0.92 * progress }
-        }
-        open.timingMode = .easeOut
-
-        return .repeatForever(.sequence([wait, close, hold, open]))
+    static func dismantleNSView(_ view: InstrumentSCNView, coordinator: Coordinator) {
+        coordinator.lifetime.detach(view)
+        view.delegate = nil
+        view.stopObservingWindow()
     }
 
     private static var bustAssetURL: URL? {
-        if let appResource = Bundle.main.url(
-            forResource: "AirPostureBust",
-            withExtension: "usdz"
-        ) {
-            return appResource
+        if let url = Bundle.main.url(forResource: "AirPostureBust", withExtension: "usdz") {
+            return url
         }
-
 #if SWIFT_PACKAGE
         return Bundle.module.url(forResource: "AirPostureBust", withExtension: "usdz")
 #else
@@ -349,5 +242,114 @@ private struct InstrumentBustRepresentable: NSViewRepresentable {
 }
 
 private final class InstrumentSCNView: SCNView {
+    private let mailbox: BustRendererMailbox
+    private var isPresented = false
+    private var windowObservers: [NSObjectProtocol] = []
+    private var clipObservers: [NSObjectProtocol] = []
+
+    init(mailbox: BustRendererMailbox) {
+        self.mailbox = mailbox
+        super.init(frame: .zero, options: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override var acceptsFirstResponder: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func setPresented(_ isPresented: Bool) {
+        self.isPresented = isPresented
+        updatePlayback()
+    }
+
+    func updatePlayback() {
+        let isDrawable = isPresented && !isHiddenOrHasHiddenAncestor && !visibleRect.isEmpty
+            && window?.isVisible == true && window?.occlusionState.contains(.visible) == true
+            && scene != nil
+        mailbox.setActive(isDrawable)
+        isPlaying = isDrawable
+        rendersContinuously = isDrawable
+    }
+
+    private func pausePlayback() {
+        mailbox.setActive(false)
+        isPlaying = false
+        rendersContinuously = false
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil { pausePlayback() }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        stopObservingWindow()
+        if let window {
+            for name in [NSWindow.didChangeOcclusionStateNotification,
+                         NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification] {
+                windowObservers.append(NotificationCenter.default.addObserver(
+                    forName: name, object: window, queue: .main
+                ) { [weak self] _ in self?.updatePlayback() })
+            }
+            windowObservers.append(NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification, object: window, queue: .main
+            ) { [weak self] _ in
+                // isVisible can still be true during willClose, so this must
+                // stop playback directly instead of reevaluating visibility.
+                self?.pausePlayback()
+            })
+        }
+        observeClippingViews()
+        updatePlayback()
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        observeClippingViews()
+        updatePlayback()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        updatePlayback()
+    }
+
+    private func observeClippingViews() {
+        for observer in clipObservers { NotificationCenter.default.removeObserver(observer) }
+        clipObservers.removeAll()
+        guard window != nil else { return }
+        var ancestor = superview
+        while let view = ancestor {
+            if let clip = view as? NSClipView {
+                clip.postsBoundsChangedNotifications = true
+                clip.postsFrameChangedNotifications = true
+                for name in [NSView.boundsDidChangeNotification, NSView.frameDidChangeNotification] {
+                    clipObservers.append(NotificationCenter.default.addObserver(
+                        forName: name, object: clip, queue: .main
+                    ) { [weak self] _ in self?.updatePlayback() })
+                }
+            }
+            ancestor = view.superview
+        }
+    }
+
+    override func viewDidHide() {
+        super.viewDidHide()
+        updatePlayback()
+    }
+
+    override func viewDidUnhide() {
+        super.viewDidUnhide()
+        updatePlayback()
+    }
+
+    func stopObservingWindow() {
+        for observer in windowObservers + clipObservers { NotificationCenter.default.removeObserver(observer) }
+        windowObservers.removeAll()
+        clipObservers.removeAll()
+    }
+
+    deinit {
+        for observer in windowObservers + clipObservers { NotificationCenter.default.removeObserver(observer) }
+    }
 }

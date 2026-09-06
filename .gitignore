@@ -4,3 +4,7 @@
 *.xcodeproj/project.xcworkspace/xcuserdata/
 DerivedData/
 .DS_Store
+
+# Graphify knowledge graph — local only, never commit or push
+graphify-out/
+.planning/graphs/

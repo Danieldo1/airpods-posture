@@ -10,6 +10,7 @@ let package = Package(
         .executable(name: "AirPosture", targets: ["AirPosture"]),
         .library(name: "AirPostureCore", targets: ["AirPostureCore"])
     ],
+    dependencies: [.package(path: "Vendor/ColorSelector")],
     targets: [
         .target(
             name: "AirPostureCore",
@@ -17,7 +18,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "AirPosture",
-            dependencies: ["AirPostureCore"],
+            dependencies: ["AirPostureCore", .product(name: "ColorSelector", package: "ColorSelector")],
             path: "Sources/AirPostureMac",
             resources: [
                 .process("Resources")
@@ -27,6 +28,16 @@ let package = Package(
             name: "AirPostureMappingCheck",
             dependencies: ["AirPostureCore"],
             path: "Tests/AirPostureMappingCheck"
+        ),
+        .executableTarget(
+            name: "AirPostureBustCheck",
+            dependencies: ["AirPostureCore"],
+            path: "Tests/AirPostureBustCheck"
+        ),
+        .executableTarget(
+            name: "AirPostureFeatureCheck",
+            dependencies: ["AirPostureCore"],
+            path: "Tests/AirPostureFeatureCheck"
         )
     ]
 )

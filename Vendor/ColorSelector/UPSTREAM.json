@@ -1,0 +1,90 @@
+{
+  "url": "https://github.com/jaywcjlove/ColorSelector",
+  "tag": "v2.3.1",
+  "revision": "d73937d4c68894170001f331ce991ccaeffa73b5",
+  "sourceChecks": [
+    {
+      "path": "Sources/ColorSelector/Color.swift",
+      "upstreamSHA256": "ef4406a189813877a162ef61daace4a996d2164d9bdec6a2d735ef4a2ecf6866",
+      "patchedSHA256": "ef4406a189813877a162ef61daace4a996d2164d9bdec6a2d735ef4a2ecf6866",
+      "previewGuardOnly": true
+    },
+    {
+      "path": "Sources/ColorSelector/ColorSelector.swift",
+      "upstreamSHA256": "4bed8452908a5e5a193d7dddb1ba7cb6566c623fac7c69271b5eaf58f32a0c4e",
+      "patchedSHA256": "25cc30c49bd9cffb9d0615a7bfd824e1aa55130fece23847cf530a375ddea85e",
+      "previewGuardOnly": true
+    },
+    {
+      "path": "Sources/ColorSelector/ColorSelectorButton.swift",
+      "upstreamSHA256": "dbce14afaa3e70fd12538cb638d93815efc1e2dcbad172b177b6aba6d8c88719",
+      "patchedSHA256": "dbce14afaa3e70fd12538cb638d93815efc1e2dcbad172b177b6aba6d8c88719",
+      "previewGuardOnly": true
+    },
+    {
+      "path": "Sources/ColorSelector/ColorSelectorModifier.swift",
+      "upstreamSHA256": "c6dbb79c1c6e4a2852c20610c3806a895c60a1a9d2405f812ad2e3c10993c408",
+      "patchedSHA256": "78dc7d4d8ffbae70ae4433e8b28579ff9b624841996624a0db2b1eed3fd1e53e",
+      "previewGuardOnly": true
+    },
+    {
+      "path": "Sources/ColorSelector/Comps/AlphaSlider.swift",
+      "upstreamSHA256": "96b2092a1588b3a086de3dd667dc9f71841c7aaa397e537d47eef0f5d8f4fbe8",
+      "patchedSHA256": "106f2e8477b37c912dbccb0db51e18b02955142f4b5aa8f91ac995c8c43199fc",
+      "previewGuardOnly": true
+    },
+    {
+      "path": "Sources/ColorSelector/Comps/ColorSampler.swift",
+      "upstreamSHA256": "6380e19778317a350eb0f73df38ae31955435fa7d029a1f77e403a42662cfb0d",
+      "patchedSHA256": "d109c9d8c43f8da5f52bb9bcdee5185870bf690b25c34c108649f4753914a508",
+      "previewGuardOnly": true
+    },
+    {
+      "path": "Sources/ColorSelector/Comps/HueSlider.swift",
+      "upstreamSHA256": "fda574e2cdde085414fbb4616e53dbb310c31ef198598568767059a75dd328e8",
+      "patchedSHA256": "7ab956d5679392e84eddbaf6417ed4e120f95f1d12b031f7e4f87b0328b08379",
+      "previewGuardOnly": true
+    },
+    {
+      "path": "Sources/ColorSelector/Comps/Saturation.swift",
+      "upstreamSHA256": "c50c590df2f5a338399c2c90c2008b2c6b7680c5f67baa8dfcb54cb4e589d3df",
+      "patchedSHA256": "7440ce56b2177e8547267ad46a170940c62f2e6ee2e2e24ba349addb0eaeb2be",
+      "previewGuardOnly": true
+    },
+    {
+      "path": "Sources/ColorSelector/Comps/Sketch.swift",
+      "upstreamSHA256": "80419eb35e52a3c149418c2b77c91ef196807950bd421f083ce8412160f82e73",
+      "patchedSHA256": "07e68c7007dbdf40f725b26e51a88e2b19a752eb8379f3c63cb8d9b3994dbccd",
+      "previewGuardOnly": true
+    },
+    {
+      "path": "Sources/ColorSelector/Comps/Swatch.swift",
+      "upstreamSHA256": "e557620e5c801e11afbb320191f65b34198c33a94186f78a38bc0a5b79b958e8",
+      "patchedSHA256": "ba3d648370f27d451557d608f576901a9fc32d6434e7815107ced3658856e633",
+      "previewGuardOnly": true
+    },
+    {
+      "path": "Sources/ColorSelector/EnvironmentValues.swift",
+      "upstreamSHA256": "4f29e7a288edb3fff7f7ceafb85bdcf261c1274cfe419de04e4b16cf5a168677",
+      "patchedSHA256": "4f29e7a288edb3fff7f7ceafb85bdcf261c1274cfe419de04e4b16cf5a168677",
+      "previewGuardOnly": true
+    },
+    {
+      "path": "Sources/ColorSelector/Examples/ColorSelectorModifierExample.swift",
+      "upstreamSHA256": "5f219e7986fcf13b972621b626ed64d4d99aeb19c1da81888e30e6efd3720d5c",
+      "patchedSHA256": "34a7b74ff11c6c0170e03a53326c7d6ce712ad3a20996b96249f9f0b3ccee594",
+      "previewGuardOnly": true
+    }
+  ],
+  "metadataChecks": [
+    {
+      "path": "Package.swift",
+      "upstreamSHA256": "d3c1ee3e4609579863477fdfa5d6d34764468874d3e49880783575712bc892c9"
+    },
+    {
+      "path": "LICENSE",
+      "upstreamSHA256": "8b4a567b4c21cfac4807267eb23fa981adc3b23260643e67165ba68943fdc5fa"
+    }
+  ],
+  "compatibilityPatch": "Only nine trailing preview blocks wrapped in #if canImport(PreviewsMacros) / #endif. No runtime source changes."
+}

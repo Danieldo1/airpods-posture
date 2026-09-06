@@ -20,7 +20,18 @@ DISPLAY_NAME="AirPosture"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
-SWIFT_FLAGS=(-c "$CONFIG" --disable-sandbox)
+TEMP_BASE="${TMPDIR:-/tmp}"
+SWIFTPM_ROOT="${AIRPOSTURE_SWIFTPM_CACHE_ROOT:-${TEMP_BASE%/}/airposture-swiftpm}"
+CLANG_CACHE="${CLANG_MODULE_CACHE_PATH:-${TEMP_BASE%/}/airposture-clang-module-cache}"
+mkdir -p "$CLANG_CACHE"
+export CLANG_MODULE_CACHE_PATH="$CLANG_CACHE"
+SWIFT_FLAGS=(
+  -c "$CONFIG"
+  --disable-sandbox
+  --cache-path "$SWIFTPM_ROOT/cache"
+  --config-path "$SWIFTPM_ROOT/config"
+  --security-path "$SWIFTPM_ROOT/security"
+)
 
 echo "› Compiling ($CONFIG)…"
 swift build "${SWIFT_FLAGS[@]}"

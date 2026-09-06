@@ -1,4 +1,7 @@
 import Foundation
+#if SWIFT_PACKAGE
+import AirPostureCore
+#endif
 
 enum WarningStyle: String, CaseIterable, Identifiable {
     case glow
@@ -97,22 +100,89 @@ enum PosturePreset: String, CaseIterable, Identifiable {
 @MainActor
 final class AirPostureSettings: ObservableObject {
     @Published var warningStyle: WarningStyle {
-        didSet { defaults.set(warningStyle.rawValue, forKey: Key.warningStyle) }
+        didSet {
+            defaults.set(warningStyle.rawValue, forKey: Key.warningStyle)
+            if warningStyle != oldValue, warningStyle != .off {
+                loadAppearance(for: warningStyle)
+            }
+        }
+    }
+
+    @Published var earlyCueEnabled: Bool {
+        didSet { defaults.set(earlyCueEnabled, forKey: Key.earlyCueEnabled) }
+    }
+
+    @Published var cueStartFraction: Double {
+        didSet {
+            let value = Self.finiteClamped(
+                cueStartFraction,
+                min: Cue.minStartFraction,
+                max: Cue.maxStartFraction,
+                fallback: Cue.defaultStartFraction
+            )
+            if value != cueStartFraction {
+                cueStartFraction = value
+                defaults.set(value, forKey: Key.cueStartFraction)
+                return
+            }
+            defaults.set(value, forKey: Key.cueStartFraction)
+        }
+    }
+
+    @Published var overlayFadeInSeconds: Double {
+        didSet {
+            let value = Self.finiteClamped(
+                overlayFadeInSeconds,
+                min: Cue.minFadeIn,
+                max: Cue.maxFadeIn,
+                fallback: Cue.defaultFadeIn
+            )
+            if value != overlayFadeInSeconds {
+                overlayFadeInSeconds = value
+                defaults.set(value, forKey: Key.overlayFadeInSeconds)
+                return
+            }
+            defaults.set(value, forKey: Key.overlayFadeInSeconds)
+        }
     }
 
     @Published var maxOverlayStrength: Double {
         didSet {
-            let value = Self.clamped(maxOverlayStrength, min: Strength.min, max: Strength.max)
+            let value = Self.finiteClamped(
+                maxOverlayStrength,
+                min: Strength.min,
+                max: Strength.max,
+                fallback: Self.defaultStrength(for: warningStyle)
+            )
             if value != maxOverlayStrength {
                 maxOverlayStrength = value
+                guard !isApplyingAppearance, warningStyle != .off else { return }
+                defaults.set(value, forKey: Key.strength(for: warningStyle))
+                defaults.set(value, forKey: Key.maxOverlayStrength)
                 return
             }
+            guard !isApplyingAppearance, warningStyle != .off else { return }
+            defaults.set(value, forKey: Key.strength(for: warningStyle))
             defaults.set(value, forKey: Key.maxOverlayStrength)
         }
     }
 
     @Published var overlayTint: OverlayTint {
-        didSet { defaults.set(overlayTint.rawValue, forKey: Key.overlayTint) }
+        didSet {
+            defaults.set(overlayTint.rawValue, forKey: Key.overlayTint)
+            guard !isApplyingAppearance, warningStyle != .off else { return }
+            overlayColor = overlayTint.color
+        }
+    }
+
+    @Published var overlayColor: OverlayColor {
+        didSet {
+            guard !isApplyingAppearance, warningStyle != .off else { return }
+            persist(color: overlayColor, for: warningStyle)
+            if let preset = OverlayTint(color: overlayColor), preset != overlayTint {
+                overlayTint = preset
+            }
+        }
     }
 
     @Published var soundPack: SoundPack {
@@ -172,9 +242,13 @@ final class AirPostureSettings: ObservableObject {
     }
 
     private let defaults: UserDefaults
+    private var isApplyingAppearance = false
 
     private enum Key {
         static let warningStyle = "warningStyle"
+        static let earlyCueEnabled = "earlyCueEnabled"
+        static let cueStartFraction = "cueStartFraction"
+        static let overlayFadeInSeconds = "overlayFadeInSeconds"
         static let maxOverlayStrength = "maxOverlayStrength"
         static let overlayTint = "overlayTint"
         static let soundPack = "soundPack"
@@ -185,12 +259,30 @@ final class AirPostureSettings: ObservableObject {
         static let lookAwayGateEnabled = "lookAwayGateEnabled"
         static let lookAwayThresholdDegrees = "lookAwayThresholdDegrees"
         static let showHeadTurnEnabled = "showHeadTurnEnabled"
+
+        static func strength(for style: WarningStyle) -> String {
+            "overlayAppearance.\(style.rawValue).strength"
+        }
+
+        static func color(for style: WarningStyle) -> String {
+            "overlayAppearance.\(style.rawValue).color"
+        }
+    }
+
+    private enum Cue {
+        static let minStartFraction = 0.10
+        static let maxStartFraction = 1.00
+        static let defaultStartFraction = 0.70
+        static let minFadeIn = 0.50
+        static let maxFadeIn = 10.00
+        static let defaultFadeIn = 3.00
     }
 
     private enum Strength {
-        static let min = 0.20
+        static let min = 0.05
         static let max = 1.00
         static let fallback = 0.70
+        static let blurFallback = 0.05
     }
 
     private enum Volume {
@@ -207,8 +299,12 @@ final class AirPostureSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        Self.migrateAppearanceIfNeeded(in: defaults)
         defaults.register(defaults: [
             Key.warningStyle: WarningStyle.glow.rawValue,
+            Key.earlyCueEnabled: true,
+            Key.cueStartFraction: Cue.defaultStartFraction,
+            Key.overlayFadeInSeconds: Cue.defaultFadeIn,
             Key.maxOverlayStrength: Strength.fallback,
             Key.overlayTint: OverlayTint.warm.rawValue,
             Key.soundPack: SoundPack.pop.rawValue,
@@ -221,14 +317,26 @@ final class AirPostureSettings: ObservableObject {
             Key.showHeadTurnEnabled: true
         ])
 
-        warningStyle = Self.decode(defaults.string(forKey: Key.warningStyle), fallback: .glow)
-        maxOverlayStrength = Self.clamped(
-            defaults.double(forKey: Key.maxOverlayStrength),
-            min: Strength.min,
-            max: Strength.max,
-            fallback: Strength.fallback
+        let initialStyle = Self.decode(defaults.string(forKey: Key.warningStyle), fallback: WarningStyle.glow)
+        let initialColor = Self.storedColor(for: initialStyle, in: defaults)
+        warningStyle = initialStyle
+        earlyCueEnabled = defaults.object(forKey: Key.earlyCueEnabled) as? Bool ?? true
+        cueStartFraction = Self.finiteClamped(
+            defaults.double(forKey: Key.cueStartFraction),
+            min: Cue.minStartFraction,
+            max: Cue.maxStartFraction,
+            fallback: Cue.defaultStartFraction
         )
-        overlayTint = Self.decode(defaults.string(forKey: Key.overlayTint), fallback: .warm)
+        overlayFadeInSeconds = Self.finiteClamped(
+            defaults.double(forKey: Key.overlayFadeInSeconds),
+            min: Cue.minFadeIn,
+            max: Cue.maxFadeIn,
+            fallback: Cue.defaultFadeIn
+        )
+        maxOverlayStrength = Self.storedStrength(for: initialStyle, in: defaults)
+        overlayColor = initialColor
+        overlayTint = OverlayTint(color: initialColor)
+            ?? Self.decode(defaults.string(forKey: Key.overlayTint), fallback: .warm)
         soundPack = Self.decode(defaults.string(forKey: Key.soundPack), fallback: .pop)
         soundVolume = Self.clamped(
             defaults.double(forKey: Key.soundVolume),
@@ -268,6 +376,85 @@ final class AirPostureSettings: ObservableObject {
         self.snoozeEndsAt = nil
     }
 
+    func resetOverlayAppearance() {
+        guard warningStyle != .off else { return }
+        isApplyingAppearance = true
+        maxOverlayStrength = Self.defaultStrength(for: warningStyle)
+        overlayColor = .warm
+        overlayTint = .warm
+        isApplyingAppearance = false
+        defaults.set(maxOverlayStrength, forKey: Key.strength(for: warningStyle))
+        persist(color: overlayColor, for: warningStyle)
+        defaults.set(maxOverlayStrength, forKey: Key.maxOverlayStrength)
+        defaults.set(overlayTint.rawValue, forKey: Key.overlayTint)
+    }
+
+    private func loadAppearance(for style: WarningStyle) {
+        guard style != .off else { return }
+        isApplyingAppearance = true
+        maxOverlayStrength = Self.storedStrength(for: style, in: defaults)
+        overlayColor = Self.storedColor(for: style, in: defaults)
+        overlayTint = OverlayTint(color: overlayColor) ?? overlayTint
+        isApplyingAppearance = false
+    }
+
+    private func persist(color: OverlayColor, for style: WarningStyle) {
+        guard let data = try? JSONEncoder().encode(color) else { return }
+        defaults.set(data, forKey: Key.color(for: style))
+    }
+
+    private static func migrateAppearanceIfNeeded(in defaults: UserDefaults) {
+        let legacyStrength: Double
+        if let stored = defaults.object(forKey: Key.maxOverlayStrength) as? NSNumber {
+            legacyStrength = finiteClamped(
+                stored.doubleValue,
+                min: Strength.min,
+                max: Strength.max,
+                fallback: Strength.fallback
+            )
+        } else {
+            legacyStrength = Strength.fallback
+        }
+        let legacyTint = decode(defaults.string(forKey: Key.overlayTint), fallback: OverlayTint.warm)
+        let legacyColor = legacyTint.color
+
+        for style in WarningStyle.allCases where style != .off {
+            let strengthKey = Key.strength(for: style)
+            if defaults.object(forKey: strengthKey) == nil {
+                defaults.set(style == .blur ? Strength.blurFallback : legacyStrength, forKey: strengthKey)
+            }
+
+            let colorKey = Key.color(for: style)
+            if defaults.object(forKey: colorKey) == nil,
+               let data = try? JSONEncoder().encode(legacyColor) {
+                defaults.set(data, forKey: colorKey)
+            }
+        }
+    }
+
+    private static func storedStrength(for style: WarningStyle, in defaults: UserDefaults) -> Double {
+        guard style != .off else { return Strength.fallback }
+        return finiteClamped(
+            defaults.double(forKey: Key.strength(for: style)),
+            min: Strength.min,
+            max: Strength.max,
+            fallback: defaultStrength(for: style)
+        )
+    }
+
+    private static func storedColor(for style: WarningStyle, in defaults: UserDefaults) -> OverlayColor {
+        guard style != .off,
+              let data = defaults.data(forKey: Key.color(for: style)),
+              let color = try? JSONDecoder().decode(OverlayColor.self, from: data) else {
+            return .warm
+        }
+        return color
+    }
+
+    private static func defaultStrength(for style: WarningStyle) -> Double {
+        style == .blur ? Strength.blurFallback : Strength.fallback
+    }
+
     private static func decode<T: RawRepresentable>(_ raw: String?, fallback: T) -> T where T.RawValue == String {
         raw.flatMap(T.init(rawValue:)) ?? fallback
     }
@@ -275,5 +462,34 @@ final class AirPostureSettings: ObservableObject {
     private static func clamped(_ value: Double, min: Double, max: Double, fallback: Double = 0) -> Double {
         if value == 0 { return fallback == 0 ? min : fallback }
         return Swift.min(Swift.max(value, min), max)
+    }
+
+    private static func finiteClamped(
+        _ value: Double,
+        min: Double,
+        max: Double,
+        fallback: Double
+    ) -> Double {
+        guard value.isFinite else { return fallback }
+        return Swift.min(Swift.max(value, min), max)
+    }
+}
+
+private extension OverlayTint {
+    init?(color: OverlayColor) {
+        switch color {
+        case .warm: self = .warm
+        case .cool: self = .cool
+        case .alert: self = .alert
+        default: return nil
+        }
+    }
+
+    var color: OverlayColor {
+        switch self {
+        case .warm: .warm
+        case .cool: .cool
+        case .alert: .alert
+        }
     }
 }

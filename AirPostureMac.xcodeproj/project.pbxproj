@@ -19,6 +19,15 @@
 		A10000000000000000000013 /* PostureGaugeMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* PostureGaugeMapping.swift */; };
 		A10000000000000000000014 /* InstrumentBustView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* InstrumentBustView.swift */; };
 		A10000000000000000000015 /* AirPostureBust.usdz in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* AirPostureBust.usdz */; };
+		A10000000000000000000020 /* WarningIntensity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000020 /* WarningIntensity.swift */; };
+		A10000000000000000000021 /* PostureAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000021 /* PostureAnalytics.swift */; };
+		A10000000000000000000023 /* SoundPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000023 /* SoundPlayback.swift */; };
+		A10000000000000000000024 /* ReminderOptionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000024 /* ReminderOptionsView.swift */; };
+		A10000000000000000000025 /* PostureAnalyticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000025 /* PostureAnalyticsView.swift */; };
+		AB0000000000000000000001 /* ColorSelector in Frameworks */ = {isa = PBXBuildFile; productRef = AB0000000000000000000002 /* ColorSelector */; };
+		A10000000000000000000026 /* BustAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000026 /* BustAnimation.swift */; };
+		A10000000000000000000027 /* BustSceneRig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000027 /* BustSceneRig.swift */; };
+		A10000000000000000000028 /* BustDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000028 /* BustDebugView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -37,6 +46,14 @@
 		A20000000000000000000007 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000008 /* AirPostureMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AirPostureMac.entitlements; sourceTree = "<group>"; };
 		A20000000000000000000009 /* AirPosture.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AirPosture.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000020 /* WarningIntensity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../AirPostureCore/WarningIntensity.swift; sourceTree = "<group>"; };
+		A20000000000000000000021 /* PostureAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../AirPostureCore/PostureAnalytics.swift; sourceTree = "<group>"; };
+		A20000000000000000000023 /* SoundPlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundPlayback.swift; sourceTree = "<group>"; };
+		A20000000000000000000024 /* ReminderOptionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderOptionsView.swift; sourceTree = "<group>"; };
+		A20000000000000000000025 /* PostureAnalyticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostureAnalyticsView.swift; sourceTree = "<group>"; };
+		A20000000000000000000026 /* BustAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../AirPostureCore/BustAnimation.swift; sourceTree = "<group>"; };
+		A20000000000000000000027 /* BustSceneRig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BustSceneRig.swift; sourceTree = "<group>"; };
+		A20000000000000000000028 /* BustDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BustDebugView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -44,6 +61,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AB0000000000000000000001 /* ColorSelector in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -77,11 +95,19 @@
 				A20000000000000000000004 /* MenuBarView.swift */,
 				A20000000000000000000005 /* PostureGaugeView.swift */,
 				A20000000000000000000014 /* InstrumentBustView.swift */,
+				A20000000000000000000028 /* BustDebugView.swift */,
+				A20000000000000000000027 /* BustSceneRig.swift */,
+				A20000000000000000000026 /* BustAnimation.swift */,
 				A20000000000000000000013 /* PostureGaugeMapping.swift */,
 				A20000000000000000000006 /* MenuBarIcon.swift */,
 				A20000000000000000000010 /* AirPostureSettings.swift */,
 				A20000000000000000000011 /* WarningOverlayManager.swift */,
 				A20000000000000000000012 /* WeeklyAnalyticsStore.swift */,
+				A20000000000000000000025 /* PostureAnalyticsView.swift */,
+				A20000000000000000000024 /* ReminderOptionsView.swift */,
+				A20000000000000000000023 /* SoundPlayback.swift */,
+				A20000000000000000000021 /* PostureAnalytics.swift */,
+				A20000000000000000000020 /* WarningIntensity.swift */,
 			);
 			path = AirPostureMac;
 			sourceTree = "<group>";
@@ -119,6 +145,7 @@
 			dependencies = (
 			);
 			name = AirPosture;
+			packageProductDependencies = (AB0000000000000000000002 /* ColorSelector */,);
 			productName = AirPosture;
 			productReference = A20000000000000000000009 /* AirPosture.app */;
 			productType = "com.apple.product-type.application";
@@ -143,6 +170,7 @@
 			);
 			mainGroup = A40000000000000000000001;
 			productRefGroup = A40000000000000000000005 /* Products */;
+			packageReferences = (AB0000000000000000000003 /* ColorSelector */,);
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -173,11 +201,19 @@
 				A10000000000000000000004 /* MenuBarView.swift in Sources */,
 				A10000000000000000000005 /* PostureGaugeView.swift in Sources */,
 				A10000000000000000000014 /* InstrumentBustView.swift in Sources */,
+				A10000000000000000000028 /* BustDebugView.swift in Sources */,
+				A10000000000000000000027 /* BustSceneRig.swift in Sources */,
+				A10000000000000000000026 /* BustAnimation.swift in Sources */,
 				A10000000000000000000013 /* PostureGaugeMapping.swift in Sources */,
 				A10000000000000000000006 /* MenuBarIcon.swift in Sources */,
 				A10000000000000000000007 /* AirPostureSettings.swift in Sources */,
 				A10000000000000000000008 /* WarningOverlayManager.swift in Sources */,
 				A10000000000000000000009 /* WeeklyAnalyticsStore.swift in Sources */,
+				A10000000000000000000025 /* PostureAnalyticsView.swift in Sources */,
+				A10000000000000000000024 /* ReminderOptionsView.swift in Sources */,
+				A10000000000000000000023 /* SoundPlayback.swift in Sources */,
+				A10000000000000000000021 /* PostureAnalytics.swift in Sources */,
+				A10000000000000000000020 /* WarningIntensity.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -280,6 +316,13 @@
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
+
+/* Begin XCLocalSwiftPackageReference section */
+        AB0000000000000000000003 /* ColorSelector */ = {isa = XCLocalSwiftPackageReference; relativePath = Vendor/ColorSelector; };
+/* End XCLocalSwiftPackageReference section */
+/* Begin XCSwiftPackageProductDependency section */
+        AB0000000000000000000002 /* ColorSelector */ = {isa = XCSwiftPackageProductDependency; package = AB0000000000000000000003 /* ColorSelector */; productName = ColorSelector; };
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCConfigurationList section */
 		A70000000000000000000001 /* Build configuration list for PBXProject "AirPostureMac" */ = {

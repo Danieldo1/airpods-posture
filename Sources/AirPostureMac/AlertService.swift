@@ -1,21 +1,41 @@
 import AppKit
-import AVFoundation
+import Combine
 import Foundation
 import Intents
 import UserNotifications
 
 @MainActor
-final class AlertService {
+final class AlertService: ObservableObject {
     static let shared = AlertService()
+
+    @Published private(set) var lastPlaybackError: String?
 
     private let cooldown: TimeInterval = 45
     private var lastAlertAt: Date?
-    private var warningPlayer: AVAudioPlayer?
-    private var chimePlayer: AVAudioPlayer?
-    private var fallbackSound: NSSound?
     private weak var settings: AirPostureSettings?
+    private let playback: any SoundPlaybackServing
+    private let now: () -> Date
+    private let bannerPolicy: (() -> Bool)?
+    private let notificationPoster: (() -> Void)?
 
-    private init() {}
+    private init() {
+        playback = SoundPlayback()
+        now = Date.init
+        bannerPolicy = nil
+        notificationPoster = nil
+    }
+
+    init(
+        playback: any SoundPlaybackServing,
+        now: @escaping () -> Date,
+        shouldSkipBanner: @escaping () -> Bool,
+        postNotification: @escaping () -> Void
+    ) {
+        self.playback = playback
+        self.now = now
+        bannerPolicy = shouldSkipBanner
+        notificationPoster = postNotification
+    }
 
     func configure(settings: AirPostureSettings) {
         self.settings = settings
@@ -38,11 +58,12 @@ final class AlertService {
            slouchElapsedSeconds < 2 * gracePeriodSeconds {
             return
         }
-        if let lastAlertAt, Date().timeIntervalSince(lastAlertAt) < cooldown {
+        let alertDate = now()
+        if let lastAlertAt, alertDate.timeIntervalSince(lastAlertAt) < cooldown {
             return
         }
 
-        lastAlertAt = Date()
+        lastAlertAt = alertDate
         playWarningSound(pack: settings.soundPack, volume: settings.soundVolume)
         if shouldSkipBanner() {
             return
@@ -56,37 +77,47 @@ final class AlertService {
         playChime(pack: pack, volume: 0.40 * settings.soundVolume)
     }
 
+    func previewSound(pack: SoundPack, volume: Double) {
+        play(pack: pack, volume: volume, channel: .preview)
+    }
+
     private func shouldSkipBanner() -> Bool {
+        if let bannerPolicy {
+            return bannerPolicy()
+        }
         let center = INFocusStatusCenter.default
         guard center.authorizationStatus == .authorized else { return false }
         return center.focusStatus.isFocused == true
     }
 
     private func playWarningSound(pack: SoundPack, volume: Double) {
-        play(pack: pack, volume: volume, store: { self.warningPlayer = $0 })
+        play(pack: pack, volume: volume, channel: .warning)
     }
 
     private func playChime(pack: SoundPack, volume: Double) {
-        play(pack: pack, volume: volume, store: { self.chimePlayer = $0 })
+        play(pack: pack, volume: volume, channel: .chime)
     }
 
-    private func play(pack: SoundPack, volume: Double, store: (AVAudioPlayer) -> Void) {
-        let clamped = Float(min(max(volume, 0), 1))
-        do {
-            let player = try AVAudioPlayer(contentsOf: pack.systemSoundURL)
-            player.volume = clamped
-            player.prepareToPlay()
-            player.play()
-            store(player)
-        } catch {
-            guard let sound = NSSound(named: pack.systemSoundName) else { return }
-            sound.volume = clamped
-            sound.play()
-            fallbackSound = sound
+    private func play(pack: SoundPack, volume: Double, channel: SoundPlaybackChannel) {
+        playback.play(pack: pack, volume: volume, channel: channel) { [weak self] event in
+            guard let self else { return }
+            switch event {
+            case .primaryStarted(true), .fallbackStarted(true), .finished(true):
+                self.lastPlaybackError = nil
+            case let .failed(reason):
+                NSLog("AirPosture could not play %@: %@", pack.rawValue, reason)
+                self.lastPlaybackError = "Couldn’t play \(pack.title)."
+            case .selectedAsset, .primaryPrepared, .primaryStarted, .fallbackStarted, .finished:
+                break
+            }
         }
     }
 
     private func postSitUpNotification() {
+        if let notificationPoster {
+            notificationPoster()
+            return
+        }
         let content = UNMutableNotificationContent()
         content.title = "Sit up straight!"
         content.body = "Your head has drifted past your tilt or lean threshold."

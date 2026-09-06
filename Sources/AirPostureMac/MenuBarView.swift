@@ -10,7 +10,22 @@ struct MenuBarView: View {
     @State private var optionsExpanded = false
     @State private var summaryExpanded = false
 
+    @State private var contentHeight: CGFloat = 620
+    @State private var visibleScreenHeight: CGFloat = 760
+
     var body: some View {
+        ScrollView {
+            content
+                .background(GeometryReader { proxy in
+                    Color.clear.preference(key: ConsoleHeightKey.self, value: proxy.size.height)
+                })
+        }
+        .frame(width: 360, height: min(contentHeight, visibleScreenHeight))
+        .onPreferenceChange(ConsoleHeightKey.self) { contentHeight = $0 }
+        .background(ConsoleScreenReader { visibleScreenHeight = max(200, $0 - 48) })
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
             PostureGaugeView(
@@ -26,8 +41,8 @@ struct MenuBarView: View {
                 showTurnValue: settings.lookAwayGateEnabled || settings.showHeadTurnEnabled,
                 showHeadTurn: settings.showHeadTurnEnabled
             )
-            WeeklySummarySection(
-                summary: weekStore.weekSummary,
+            PostureAnalyticsView(
+                store: weekStore,
                 isExpanded: $summaryExpanded
             )
             calibrateButton
@@ -107,7 +122,7 @@ struct MenuBarView: View {
             }
 
             if optionsExpanded {
-                ScrollView {
+                Group {
                     VStack(alignment: .leading, spacing: 14) {
                         settingsGroup("Monitoring", systemImage: "waveform.path.ecg") {
                             VStack(alignment: .leading, spacing: 12) {
@@ -172,52 +187,7 @@ struct MenuBarView: View {
                         }
 
                         settingsGroup("Reminders", systemImage: "bell.badge") {
-                            VStack(alignment: .leading, spacing: 12) {
-                                labeledPicker("Warning style", selection: $settings.warningStyle) {
-                                    ForEach(WarningStyle.allCases) { style in
-                                        Text(style.title).tag(style)
-                                    }
-                                }
-                                .help("Edge glow is default. Overlays never block clicks.")
-                                .accessibilityHint("Edge glow is default. Overlays never block clicks.")
-
-                                sliderRow(
-                                    title: "Max strength",
-                                    valueText: "\(Int(settings.maxOverlayStrength * 100))%",
-                                    value: $settings.maxOverlayStrength,
-                                    range: 0.20...1.00,
-                                    accessibilityValue: "\(Int(settings.maxOverlayStrength * 100)) percent",
-                                    minLabel: "20%",
-                                    maxLabel: "100%",
-                                    help: "Ceiling for the overlay. It ramps up after the grace period."
-                                )
-
-                                labeledPicker("Sound pack", selection: $settings.soundPack) {
-                                    ForEach(SoundPack.allCases) { pack in
-                                        Text(pack.title).tag(pack)
-                                    }
-                                }
-                                .accessibilityHint("System sound played with the sit-up reminder.")
-
-                                sliderRow(
-                                    title: "Sound volume",
-                                    valueText: "\(Int(settings.soundVolume * 100))%",
-                                    value: $settings.soundVolume,
-                                    range: 0.10...0.80,
-                                    accessibilityValue: "\(Int(settings.soundVolume * 100)) percent",
-                                    minLabel: "10%",
-                                    maxLabel: "80%",
-                                    help: "Volume for the warning sound."
-                                )
-
-                                settingsToggle(
-                                    "Wait for 2× grace before sound",
-                                    isOn: $settings.soundAfterDoubleGrace,
-                                    help:
-                                        "Keep the overlay, but delay sound and banner until you have been slouching for twice the grace period."
-                                )
-
-                            }
+                            ReminderOptionsView(settings: settings)
                         }
 
                         settingsGroup("Appearance", systemImage: "paintbrush") {
@@ -230,13 +200,7 @@ struct MenuBarView: View {
                                 .accessibilityHint(
                                     "Changes the menu-bar symbol. Colors still follow upright, warning, and slouch.")
 
-                                labeledPicker("Overlay tint", selection: $settings.overlayTint) {
-                                    ForEach(OverlayTint.allCases) { tint in
-                                        Text(tint.title).tag(tint)
-                                    }
-                                }
-                                .accessibilityHint(
-                                    "Color for screen-edge overlays. Does not recolor the menu-bar icon.")
+
 
                             }
                         }
@@ -256,11 +220,6 @@ struct MenuBarView: View {
                     .padding(.top, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                // A vertical ScrollView has no intrinsic height inside MenuBarExtra.
-                // Give the expanded panel a concrete viewport so it cannot collapse to zero.
-                .frame(maxWidth: .infinity)
-                .frame(height: 300)
-                .scrollIndicators(.hidden)
                 .transition(.opacity)
             }
         }
@@ -456,7 +415,7 @@ struct MenuBarView: View {
     }
 }
 
-private struct DisclosureHeader: View {
+struct DisclosureHeader: View {
     let title: String
     let subtitle: String
     let systemImage: String
@@ -507,59 +466,7 @@ private struct DisclosureHeader: View {
     }
 }
 
-private struct WeeklySummarySection: View {
-    let summary: WeekSummary
-    @Binding var isExpanded: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            DisclosureHeader(
-                title: "This week",
-                subtitle: summary.hasMonitoredTime ? "Your posture at a glance" : "No monitored time yet",
-                systemImage: "chart.bar.xaxis",
-                isExpanded: isExpanded
-            ) {
-                withAnimation(disclosureAnimation) {
-                    isExpanded.toggle()
-                }
-            }
-
-            if summary.hasMonitoredTime {
-                HStack(spacing: 8) {
-                    SummaryMetric(
-                        value: summary.percentUpright.map { "\($0)%" } ?? "—",
-                        label: "Upright",
-                        tint: .green
-                    )
-                    SummaryMetric(
-                        value: "\(summary.slouchEpisodes)",
-                        label: summary.slouchEpisodes == 1 ? "Slouch" : "Slouches",
-                        tint: .orange
-                    )
-                    SummaryMetric(
-                        value: "\(summary.offNeutralMinutes)m",
-                        label: "Off-neutral",
-                        tint: .secondary
-                    )
-                }
-            }
-
-            if isExpanded {
-                WeekStripView(summary: summary)
-                    .padding(.horizontal, 4)
-                    .padding(.top, 2)
-                    .transition(.opacity)
-            }
-        }
-    }
-
-    private var disclosureAnimation: Animation? {
-        reduceMotion ? nil : .snappy(duration: 0.22, extraBounce: 0)
-    }
-}
-
-private struct SummaryMetric: View {
+struct SummaryMetric: View {
     let value: String
     let label: String
     let tint: Color
@@ -581,106 +488,6 @@ private struct SummaryMetric: View {
             Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10, style: .continuous)
         )
         .accessibilityElement(children: .combine)
-    }
-}
-
-private struct WeekStripView: View {
-    let summary: WeekSummary
-
-    private let weekdayNames = [
-        "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
-    ]
-    private let weekdayLetters = ["M", "T", "W", "T", "F", "S", "S"]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Daily upright")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if let delta = summary.vsLastWeekPoints {
-                    Text(deltaText(delta))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(delta >= 0 ? Color.green : Color.secondary)
-                }
-            }
-
-            HStack(alignment: .bottom, spacing: 6) {
-                ForEach(0..<7, id: \.self) { index in
-                    WeekBarColumn(
-                        letter: weekdayLetters[index],
-                        weekdayName: weekdayNames[index],
-                        percent: summary.dailyUprightPercents[safe: index] ?? nil,
-                        isToday: index == currentWeekdayIndex
-                    )
-                }
-            }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("This week, Monday through Sunday")
-        }
-    }
-
-    private func deltaText(_ delta: Int) -> String {
-        if delta > 0 { return "+\(delta) pts vs last week" }
-        if delta < 0 { return "−\(abs(delta)) pts vs last week" }
-        return "No change vs last week"
-    }
-
-    private var currentWeekdayIndex: Int {
-        let calendar = WeeklyAnalyticsMath.isoCalendar()
-        let today = calendar.startOfDay(for: Date())
-        let monday = WeeklyAnalyticsMath.startOfISOWeek(containing: today, calendar: calendar)
-        let days = calendar.dateComponents([.day], from: monday, to: today).day ?? 0
-        return min(max(days, 0), 6)
-    }
-}
-
-private struct WeekBarColumn: View {
-    let letter: String
-    let weekdayName: String
-    let percent: Int?
-    let isToday: Bool
-
-    var body: some View {
-        VStack(spacing: 4) {
-            ZStack(alignment: .bottom) {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
-                    .frame(height: 36)
-
-                if let percent {
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(isToday ? Color.green.opacity(0.85) : Color.primary.opacity(0.28))
-                        .frame(height: max(CGFloat(percent) / 100 * 36, percent == 0 ? 0 : 1))
-                        .overlay {
-                            if isToday {
-                                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                    .stroke(Color.green, lineWidth: 1)
-                            }
-                        }
-                } else {
-                    Capsule()
-                        .fill(Color.secondary.opacity(0.45))
-                        .frame(height: 2)
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36, alignment: .bottom)
-
-            Text(letter)
-                .font(.caption2.weight(isToday ? .semibold : .regular))
-                .foregroundStyle(isToday ? .primary : .secondary)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(barAccessibilityValue))
-        .help(barAccessibilityValue)
-    }
-
-    private var barAccessibilityValue: String {
-        if let percent {
-            return "\(weekdayName), \(percent) percent upright"
-        }
-        return "\(weekdayName), no data"
     }
 }
 
@@ -720,9 +527,40 @@ private struct ConnectionBadge: View {
     }
 }
 
-extension Array {
-    fileprivate subscript(safe index: Int) -> Element? {
-        guard indices.contains(index) else { return nil }
-        return self[index]
+
+private struct ConsoleHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 620
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// Observe the hosting window's actual screen, including moves between displays.
+private struct ConsoleScreenReader: NSViewRepresentable {
+    var onHeightChange: (CGFloat) -> Void
+    func makeNSView(context: Context) -> ScreenView { ScreenView(onHeightChange: onHeightChange) }
+    func updateNSView(_ view: ScreenView, context: Context) { view.onHeightChange = onHeightChange }
+
+    final class ScreenView: NSView {
+        var onHeightChange: (CGFloat) -> Void
+        private var tokens: [NSObjectProtocol] = []
+        init(onHeightChange: @escaping (CGFloat) -> Void) {
+            self.onHeightChange = onHeightChange
+            super.init(frame: .zero)
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            tokens.forEach(NotificationCenter.default.removeObserver)
+            tokens.removeAll()
+            for name in [NSWindow.didChangeScreenNotification, NSApplication.didChangeScreenParametersNotification] {
+                tokens.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in self?.report() })
+            }
+            report()
+        }
+        private func report() {
+            let screen = window?.screen ?? NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
+            guard let height = screen?.visibleFrame.height else { return }
+            DispatchQueue.main.async { [weak self] in self?.onHeightChange(height) }
+        }
+        deinit { tokens.forEach(NotificationCenter.default.removeObserver) }
     }
 }

@@ -1,6 +1,7 @@
 #if SWIFT_PACKAGE
 import AirPostureCore
 #endif
+import AppKit
 import Combine
 import CoreMotion
 import Foundation
@@ -42,10 +43,18 @@ enum DominantAxis: Equatable {
 
 @MainActor
 final class PostureTrackingManager: NSObject, ObservableObject {
-    @Published var connectionStatus: ConnectionStatus = .disconnected
+    @Published var connectionStatus: ConnectionStatus = .disconnected {
+        didSet {
+            if connectionStatus != .connected {
+                motionFreshAfterUptime = monotonic()
+                publishAnalytics(state: .inactive)
+            }
+        }
+    }
+    let analyticsObservations = PassthroughSubject<AnalyticsObservation, Never>()
     @Published var isTrackingEnabled: Bool {
         didSet {
-            UserDefaults.standard.set(isTrackingEnabled, forKey: SettingsKey.isTrackingEnabled)
+            defaults.set(isTrackingEnabled, forKey: SettingsKey.isTrackingEnabled)
             if isTrackingEnabled {
                 startMotionUpdates()
             } else {
@@ -55,17 +64,17 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     }
 
     @Published var sensitivityDegrees: Double {
-        didSet { UserDefaults.standard.set(sensitivityDegrees, forKey: SettingsKey.sensitivityDegrees) }
+        didSet { defaults.set(sensitivityDegrees, forKey: SettingsKey.sensitivityDegrees) }
     }
 
     @Published var gracePeriodSeconds: Double {
-        didSet { UserDefaults.standard.set(gracePeriodSeconds, forKey: SettingsKey.gracePeriodSeconds) }
+        didSet { defaults.set(gracePeriodSeconds, forKey: SettingsKey.gracePeriodSeconds) }
     }
 
     @Published var activePreset: PosturePreset {
         didSet {
             guard oldValue != activePreset else { return }
-            UserDefaults.standard.set(activePreset.rawValue, forKey: SettingsKey.activePosturePreset)
+            defaults.set(activePreset.rawValue, forKey: SettingsKey.activePosturePreset)
             applyActivePresetBaselines(resetSlouch: true)
         }
     }
@@ -107,6 +116,12 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         max(Motion.minLeanThreshold, sensitivityDegrees * Motion.leanToTiltRatio)
     }
 
+    var normalizedDeviation: Double {
+        let threshold = tiltThresholdDegrees
+        guard deviationDegrees.isFinite, threshold.isFinite, threshold > 0 else { return 0 }
+        return max(deviationDegrees / threshold, 0)
+    }
+
     var postureBand: PostureBand {
         if !isTrackingEnabled { return .paused }
         if connectionStatus != .connected { return .waitingForHeadphones }
@@ -141,7 +156,10 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         min(max(slouchProgress, 0), 1)
     }
 
-    private let motionManager = CMHeadphoneMotionManager()
+    private let defaults: UserDefaults
+    private let now: () -> Date
+    private let monotonic: () -> TimeInterval
+    private let motionManager: CMHeadphoneMotionManager?
     private let motionQueue: OperationQueue = {
         let queue = OperationQueue()
         queue.name = "com.macposture.airposture.motion"
@@ -156,6 +174,9 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     private var sessionYawDegrees: Double?
     private var slouchStartedAt: Date?
     private var hasReceivedMotionSample = false
+    private var isSystemSleeping = false
+    private var motionFreshAfterUptime: TimeInterval = 0
+    private var sleepObservers: [NSObjectProtocol] = []
     private var lastSuccessfulMotionTime: Date?
     private var healthCheckTimer: Timer?
     private var calibrateResetTask: Task<Void, Never>?
@@ -190,8 +211,25 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         static let disconnectSilence: TimeInterval = 10
     }
 
-    override init() {
-        let defaults = UserDefaults.standard
+    override convenience init() {
+        self.init(
+            defaults: .standard,
+            now: Date.init,
+            monotonic: { ProcessInfo.processInfo.systemUptime },
+            motionManager: CMHeadphoneMotionManager()
+        )
+    }
+
+    init(
+        defaults: UserDefaults,
+        now: @escaping () -> Date,
+        monotonic: @escaping () -> TimeInterval,
+        motionManager: CMHeadphoneMotionManager?
+    ) {
+        self.defaults = defaults
+        self.now = now
+        self.monotonic = monotonic
+        self.motionManager = motionManager
         defaults.register(defaults: [
             SettingsKey.isTrackingEnabled: true,
             SettingsKey.sensitivityDegrees: Motion.defaultSensitivity,
@@ -230,6 +268,8 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         baselineRollDegrees = preset == .desk ? deskRollDegrees : sofaRollDegrees
 
         super.init()
+        guard let motionManager else { return }
+        configureSleepObservers()
         motionManager.delegate = self
         refreshAuthorizationStatus()
         motionManager.startConnectionStatusUpdates()
@@ -241,6 +281,37 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         }
     }
 
+    deinit {
+        for token in sleepObservers { NSWorkspace.shared.notificationCenter.removeObserver(token) }
+    }
+
+    private func configureSleepObservers() {
+        for name in [NSWorkspace.willSleepNotification, NSWorkspace.didWakeNotification] {
+            let token = NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.isSystemSleeping = notification.name == NSWorkspace.willSleepNotification
+                    self.motionFreshAfterUptime = self.monotonic()
+                    self.hasReceivedMotionSample = false
+                    self.lastSuccessfulMotionTime = nil
+                    self.connectionStatus = self.isTrackingEnabled ? .searching : .disconnected
+                    self.resetSlouchState()
+                    self.publishAnalytics(state: .inactive)
+                }
+            }
+            sleepObservers.append(token)
+        }
+    }
+
+    private func publishAnalytics(state: AnalyticsState) {
+        analyticsObservations.send(AnalyticsObservation(state: state, date: now(), monotonic: monotonic()))
+    }
+
+    private func publishScoringObservation() {
+        let state: AnalyticsState = !isAnalyticsEligible ? .inactive : isSlouching ? .slouch : isPastThreshold ? .countdown : .upright
+        publishAnalytics(state: state)
+    }
+
     func configure(settings: AirPostureSettings) {
         self.settings = settings
     }
@@ -248,8 +319,11 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     func calibrate() {
         guard canCalibrate else { return }
         persistBaseline(pitch: currentPitchDegrees, roll: currentRollDegrees)
+        resetLiveDeviation()
         rezeroSessionYaw()
         resetSlouchState()
+        motionFreshAfterUptime = monotonic()
+        publishAnalytics(state: .inactive)
         didJustCalibrate = true
 
         calibrateResetTask?.cancel()
@@ -265,6 +339,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     }
 
     private func startMotionUpdates() {
+        guard let motionManager else { return }
         refreshAuthorizationStatus()
         lastErrorMessage = nil
         startHealthCheck()
@@ -294,7 +369,8 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     }
 
     private func stopMotionUpdates(resetLiveState: Bool) {
-        motionManager.stopDeviceMotionUpdates()
+        publishAnalytics(state: .inactive)
+        motionManager?.stopDeviceMotionUpdates()
         stopHealthCheck()
         hasReceivedMotionSample = false
         lastSuccessfulMotionTime = nil
@@ -306,6 +382,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     }
 
     private func handleMotion(_ motion: CMDeviceMotion?, error: Error?) {
+        guard isTrackingEnabled, !isSystemSleeping else { return }
         if let error {
             lastErrorMessage = error.localizedDescription
             hasReceivedMotionSample = false
@@ -315,17 +392,30 @@ final class PostureTrackingManager: NSObject, ObservableObject {
             return
         }
 
-        guard let motion else { return }
+        guard let motion else {
+            // Suspended evidence also ends sustained scoring; fresh motion
+            // must complete grace before analytics can record a new episode.
+            resetSlouchState()
+            publishAnalytics(state: .inactive)
+            return
+        }
+        guard motion.timestamp > motionFreshAfterUptime else { return }
 
         let pitch = motion.attitude.pitch
         let roll = motion.attitude.roll
         let yaw = motion.attitude.yaw
-        guard Self.isValidAttitude(pitch: pitch, roll: roll, yaw: yaw) else { return }
+        guard Self.isValidAttitude(pitch: pitch, roll: roll, yaw: yaw) else {
+            resetSlouchState()
+            publishAnalytics(state: .inactive)
+            return
+        }
+        // Observers see a complete result, including unchanged zones after wake/reconnect.
+        defer { publishScoringObservation() }
 
         lastErrorMessage = nil
         authorizationDenied = false
         hasReceivedMotionSample = true
-        lastSuccessfulMotionTime = Date()
+        lastSuccessfulMotionTime = now()
         connectionStatus = .connected
 
         let rawPitch = pitch * 180.0 / .pi
@@ -398,12 +488,12 @@ final class PostureTrackingManager: NSObject, ObservableObject {
             return
         }
 
-        let startedAt = slouchStartedAt ?? Date()
+        let startedAt = slouchStartedAt ?? now()
         if slouchStartedAt == nil {
             slouchStartedAt = startedAt
         }
 
-        let elapsed = Date().timeIntervalSince(startedAt)
+        let elapsed = now().timeIntervalSince(startedAt)
         slouchElapsedSeconds = elapsed
         slouchProgress = gracePeriodSeconds > 0 ? elapsed / gracePeriodSeconds : 1
 
@@ -442,7 +532,6 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     private func persistBaseline(pitch: Double, roll: Double) {
         baselinePitchDegrees = pitch
         baselineRollDegrees = roll
-        let defaults = UserDefaults.standard
         switch activePreset {
         case .desk:
             deskPitchDegrees = pitch
@@ -466,9 +555,20 @@ final class PostureTrackingManager: NSObject, ObservableObject {
             baselinePitchDegrees = sofaPitchDegrees
             baselineRollDegrees = sofaRollDegrees
         }
+        resetLiveDeviation()
         if resetSlouch {
             resetSlouchState()
         }
+        motionFreshAfterUptime = monotonic()
+        publishAnalytics(state: .inactive)
+    }
+
+    private func resetLiveDeviation() {
+        pitchDeltaDegrees = 0
+        rollDeltaDegrees = 0
+        deviationDegrees = 0
+        dominantAxis = .tilt
+        isLookingAway = false
     }
 
     private func migrateLegacyPitchOnlyBaselineIfNeeded() {
@@ -508,7 +608,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
 
     private func performHealthCheck() {
         guard isTrackingEnabled, let lastSuccessfulMotionTime else { return }
-        let silence = Date().timeIntervalSince(lastSuccessfulMotionTime)
+        let silence = now().timeIntervalSince(lastSuccessfulMotionTime)
 
         if silence >= Motion.disconnectSilence {
             hasReceivedMotionSample = false

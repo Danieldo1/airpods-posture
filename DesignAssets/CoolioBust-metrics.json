@@ -1,0 +1,18 @@
+{
+  "source": "Coolio 2.0 UPDATED.blend",
+  "height": 2,
+  "bones": 16,
+  "vertices": 18434,
+  "triangles": 36740,
+  "meshes": [
+    "CoolioBody",
+    "MouthLine",
+    "BlackEyeLeft",
+    "BlackEyeRight",
+    "TeethTop",
+    "TeethBottom",
+    "BlackBrowLeft",
+    "BlackBrowRight"
+  ],
+  "usdzBytes": 2049036
+}
