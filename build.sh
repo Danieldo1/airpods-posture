@@ -35,6 +35,16 @@ mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp "$BIN_DIR/$APP_NAME" "$CONTENTS/MacOS/$APP_NAME"
 cp "$ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"
 
+# SwiftPM places processed target resources in a sibling bundle. Copy its
+# contents into the conventional macOS app Resources directory; the view checks
+# Bundle.main first and falls back to Bundle.module for `swift run`.
+RESOURCE_BUNDLE="$BIN_DIR/AirPostureMac_AirPosture.bundle"
+if [[ ! -d "$RESOURCE_BUNDLE" ]]; then
+  echo "error: missing SwiftPM resource bundle: $RESOURCE_BUNDLE" >&2
+  exit 1
+fi
+cp -R "$RESOURCE_BUNDLE/." "$CONTENTS/Resources/"
+
 if [[ -n "${SIGN_IDENTITY:-}" ]]; then
   echo "› Code signing with: $SIGN_IDENTITY"
   codesign --force --options runtime \

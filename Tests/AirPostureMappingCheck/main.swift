@@ -38,10 +38,10 @@ private func testUncalibratedPoseIsForcedToZero() {
 }
 
 private func testPitchVisualClampsToSpecEdges() {
-    expectEqual(PostureGaugeMapping.pitchVisualDegrees(-28), -15.4, "pitch edge -28")
-    expectEqual(PostureGaugeMapping.pitchVisualDegrees(16), 8.8, "pitch edge +16")
-    expectEqual(PostureGaugeMapping.pitchVisualDegrees(-40), -15.4, "pitch clamp -40")
-    expectEqual(PostureGaugeMapping.pitchVisualDegrees(30), 8.8, "pitch clamp +30")
+    expectEqual(PostureGaugeMapping.pitchVisualDegrees(-30), -21, "pitch edge -30")
+    expectEqual(PostureGaugeMapping.pitchVisualDegrees(20), 14, "pitch edge +20")
+    expectEqual(PostureGaugeMapping.pitchVisualDegrees(-40), -21, "pitch clamp -40")
+    expectEqual(PostureGaugeMapping.pitchVisualDegrees(30), 14, "pitch clamp +30")
 }
 
 private func testRollVisualClampsToSpecEdges() {
@@ -89,14 +89,18 @@ private func testBustPosePreservesMeasuredRotation() {
     expectEqual(pose.neckEulerRadians.x + pose.headEulerRadians.x, total.x, "bust pitch distribution")
     expectEqual(pose.neckEulerRadians.y + pose.headEulerRadians.y, total.y, "bust yaw distribution")
     expectEqual(pose.neckEulerRadians.z + pose.headEulerRadians.z, total.z, "bust roll distribution")
+    expect(
+        abs(pose.headEulerRadians.x) > abs(pose.neckEulerRadians.x),
+        "head leads cervical pitch"
+    )
 }
 
 private func testForwardPitchCreatesNeckSlouch() {
-    let pose = PostureGaugeMapping.bustPose(pitch: -28, roll: 0)
+    let pose = PostureGaugeMapping.bustPose(pitch: -30, roll: 0)
     expect(pose.neckOffset.z > 0, "slouch moves neck forward")
     expect(pose.headOffset.z > pose.neckOffset.z, "slouch moves head farther forward")
-    expect(pose.neckOffset.y < 0, "slouch drops neck")
-    expect(pose.headOffset.y < pose.neckOffset.y, "slouch drops head farther")
+    expectEqual(pose.neckOffset.y, 0, "slouch does not compress neck vertically")
+    expectEqual(pose.headOffset.y, 0, "slouch does not compress head vertically")
 }
 
 private func testUprightAndChinUpDoNotTranslateNeck() {

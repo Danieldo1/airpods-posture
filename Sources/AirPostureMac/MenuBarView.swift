@@ -17,8 +17,6 @@ struct MenuBarView: View {
                 pitchDelta: tracker.pitchDeltaDegrees,
                 rollDelta: tracker.rollDeltaDegrees,
                 yawDelta: tracker.yawDeltaDegrees,
-                tiltThreshold: tracker.tiltThresholdDegrees,
-                leanThreshold: tracker.leanThresholdDegrees,
                 dominantAxis: tracker.dominantAxis,
                 band: tracker.postureBand,
                 slouchProgress: tracker.slouchProgressClamped,

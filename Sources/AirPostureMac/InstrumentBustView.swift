@@ -40,6 +40,10 @@ private struct InstrumentBustRepresentable: NSViewRepresentable {
         var bustRoot: SCNNode?
         var neckPivot: SCNNode?
         var headPivot: SCNNode?
+        var neckOrigin = SCNVector3Zero
+        var headOrigin = SCNVector3Zero
+        var eyeNodes: [SCNNode] = []
+        var porcelainMaterial: SCNMaterial?
         var statusMaterial: SCNMaterial?
         var sceneView: SCNView?
         var didLogFailure = false
@@ -63,6 +67,7 @@ private struct InstrumentBustRepresentable: NSViewRepresentable {
         view.allowsCameraControl = false
         view.autoenablesDefaultLighting = false
         view.antialiasingMode = .multisampling4X
+        view.preferredFramesPerSecond = 30
 
         guard let scene = Self.makeScene(coordinator: context.coordinator) else {
             if !context.coordinator.didLogFailure {
@@ -110,16 +115,26 @@ private struct InstrumentBustRepresentable: NSViewRepresentable {
         coordinator.neckPivot?.eulerAngles = Self.vector(pose.neckEulerRadians)
         coordinator.headPivot?.eulerAngles = Self.vector(pose.headEulerRadians)
         coordinator.neckPivot?.position = Self.offset(
-            origin: Model.neckOrigin,
+            origin: coordinator.neckOrigin,
             by: pose.neckOffset
         )
         coordinator.headPivot?.position = Self.offset(
-            origin: Model.headOrigin,
+            origin: coordinator.headOrigin,
             by: pose.headOffset
         )
-        coordinator.statusMaterial?.emission.contents = emission.color
-        coordinator.statusMaterial?.emission.intensity = CGFloat(emission.intensity)
         SCNTransaction.commit()
+
+        // The material change communicates a discrete posture state, so it
+        // should not tween through intermediate colors as the pose settles.
+        SCNTransaction.begin()
+        SCNTransaction.animationDuration = 0
+        coordinator.porcelainMaterial?.emission.contents = emission.color
+        coordinator.porcelainMaterial?.emission.intensity = CGFloat(emission.porcelainIntensity)
+        coordinator.statusMaterial?.emission.contents = emission.color
+        coordinator.statusMaterial?.emission.intensity = CGFloat(emission.collarIntensity)
+        SCNTransaction.commit()
+
+        updateBlinkAnimation(for: coordinator)
     }
 
     private static func vector(_ vector: BustVector3) -> SCNVector3 {
@@ -133,105 +148,64 @@ private struct InstrumentBustRepresentable: NSViewRepresentable {
         return SCNVector3(x, y, z)
     }
 
-    private static func emission(for band: PostureBand) -> (color: NSColor, intensity: Double) {
+    private static func emission(
+        for band: PostureBand
+    ) -> (color: NSColor, porcelainIntensity: Double, collarIntensity: Double) {
         switch band {
         case .upright:
-            (NSColor.systemGreen, 0.35)
+            (NSColor.systemGreen, 0.055, 1.25)
         case .leaning:
-            (NSColor.systemOrange, 0.40)
+            (NSColor.systemOrange, 0.065, 1.45)
         case .slouching:
-            (NSColor.systemRed, 0.45)
+            (NSColor.systemRed, 0.075, 1.65)
         case .paused, .uncalibrated, .waitingForHeadphones:
-            (NSColor.white, 0.08)
+            (NSColor.white, 0.015, 0.18)
         }
     }
 
     private static func makeScene(coordinator: Coordinator) -> SCNScene? {
+        guard
+            let assetURL = bustAssetURL,
+            let assetScene = try? SCNScene(url: assetURL),
+            let importedRoot = assetScene.rootNode.childNode(
+                withName: "AirPostureBust",
+                recursively: false
+            )
+        else {
+            return nil
+        }
+
         let scene = SCNScene()
 
         let root = SCNNode()
         root.name = "bustRoot"
+        // Blender's USD orientation conversion produces a Y-up model whose
+        // face points toward -Z. Turn the imported sculpture toward the
+        // existing +Z SceneKit camera and fill the enlarged hero stage.
+        root.eulerAngles.y = .pi
+        root.scale = SCNVector3(1.35, 1.35, 1.35)
         scene.rootNode.addChildNode(root)
         coordinator.bustRoot = root
 
-        let glass = SCNMaterial()
-        glass.lightingModel = .physicallyBased
-        glass.diffuse.contents = NSColor(calibratedWhite: 0.72, alpha: 0.82)
-        glass.metalness.contents = 0.12
-        glass.roughness.contents = 0.16
-        glass.transparency = 0.46
-        glass.blendMode = .alpha
-        glass.isDoubleSided = true
-        coordinator.statusMaterial = glass
+        importedRoot.removeFromParentNode()
+        importedRoot.childNode(withName: "env_light", recursively: false)?.removeFromParentNode()
+        root.addChildNode(importedRoot)
 
-        let metal = SCNMaterial()
-        metal.lightingModel = .physicallyBased
-        metal.diffuse.contents = NSColor(calibratedWhite: 0.52, alpha: 1)
-        metal.metalness.contents = 0.78
-        metal.roughness.contents = 0.38
-
-        let chest = SCNNode(geometry: SCNSphere(radius: 0.38))
-        chest.name = "chest"
-        chest.geometry?.firstMaterial = metal
-        chest.scale = SCNVector3(1.0, 0.34, 0.62)
-        chest.position = SCNVector3(0, -0.43, -0.015)
-        root.addChildNode(chest)
-
-        for side in [-1.0, 1.0] {
-            let shoulder = SCNNode(geometry: SCNSphere(radius: 0.24))
-            shoulder.geometry?.firstMaterial = metal
-            shoulder.scale = SCNVector3(1.18, 0.38, 0.72)
-            shoulder.position = SCNVector3(Float(side * 0.38), -0.37, 0)
-            root.addChildNode(shoulder)
+        guard
+            let neckPivot = importedRoot.childNode(withName: "CTRL_neck", recursively: true),
+            let headPivot = importedRoot.childNode(withName: "CTRL_head", recursively: true)
+        else {
+            return nil
         }
-
-        let neckPivot = SCNNode()
-        neckPivot.name = "neckPivot"
-        neckPivot.position = Model.neckOrigin
-        root.addChildNode(neckPivot)
         coordinator.neckPivot = neckPivot
-
-        let neck = SCNNode(geometry: SCNCapsule(capRadius: 0.13, height: 0.34))
-        neck.name = "neck"
-        neck.geometry?.firstMaterial = metal
-        neck.position = SCNVector3(0, 0.15, 0)
-        neckPivot.addChildNode(neck)
-
-        let headPivot = SCNNode()
-        headPivot.name = "headPivot"
-        headPivot.position = Model.headOrigin
-        neckPivot.addChildNode(headPivot)
         coordinator.headPivot = headPivot
-
-        let cranium = SCNNode(geometry: SCNSphere(radius: 0.42))
-        cranium.name = "cranium"
-        cranium.geometry?.firstMaterial = glass
-        cranium.scale = SCNVector3(0.78, 0.92, 0.74)
-        cranium.position = SCNVector3(0, 0.23, 0)
-        headPivot.addChildNode(cranium)
-
-        let jaw = SCNNode(geometry: SCNSphere(radius: 0.32))
-        jaw.name = "jaw"
-        jaw.geometry?.firstMaterial = glass
-        jaw.scale = SCNVector3(0.88, 0.72, 0.82)
-        jaw.position = SCNVector3(0, 0.015, 0.035)
-        headPivot.addChildNode(jaw)
-
-        // A small facial keel makes left/right yaw readable even at menu-bar size.
-        let nose = SCNNode(geometry: SCNCone(topRadius: 0, bottomRadius: 0.065, height: 0.15))
-        nose.name = "facialDirection"
-        nose.geometry?.firstMaterial = metal
-        nose.eulerAngles.x = .pi / 2
-        nose.position = SCNVector3(0, 0.17, 0.32)
-        headPivot.addChildNode(nose)
-
-        for side in [-1.0, 1.0] {
-            let ear = SCNNode(geometry: SCNSphere(radius: 0.055))
-            ear.geometry?.firstMaterial = metal
-            ear.scale = SCNVector3(0.55, 1.15, 0.45)
-            ear.position = SCNVector3(Float(side * 0.34), 0.19, 0)
-            headPivot.addChildNode(ear)
+        coordinator.neckOrigin = neckPivot.position
+        coordinator.headOrigin = headPivot.position
+        coordinator.eyeNodes = ["GraphiteEyeLeft", "GraphiteEyeRight"].compactMap {
+            importedRoot.childNode(withName: $0, recursively: true)
         }
+
+        configureMaterials(in: importedRoot, coordinator: coordinator)
 
         let cameraNode = SCNNode()
         let camera = SCNCamera()
@@ -247,21 +221,21 @@ private struct InstrumentBustRepresentable: NSViewRepresentable {
         let key = SCNNode()
         key.light = SCNLight()
         key.light?.type = .omni
-        key.light?.intensity = 800
+        key.light?.intensity = 100
         key.position = SCNVector3(-2.2, 2.6, 3.4)
         scene.rootNode.addChildNode(key)
 
         let fill = SCNNode()
         fill.light = SCNLight()
         fill.light?.type = .omni
-        fill.light?.intensity = 250
+        fill.light?.intensity = 35
         fill.position = SCNVector3(0.4, 0.2, 5.5)
         scene.rootNode.addChildNode(fill)
 
         let rim = SCNNode()
         rim.light = SCNLight()
         rim.light?.type = .omni
-        rim.light?.intensity = 420
+        rim.light?.intensity = 60
         rim.light?.color = NSColor(calibratedRed: 0.42, green: 0.60, blue: 0.82, alpha: 1)
         rim.position = SCNVector3(2.2, 1.5, -2.0)
         scene.rootNode.addChildNode(rim)
@@ -270,9 +244,107 @@ private struct InstrumentBustRepresentable: NSViewRepresentable {
         return scene
     }
 
-    private enum Model {
-        static let neckOrigin = SCNVector3(0, -0.31, 0)
-        static let headOrigin = SCNVector3(0, 0.30, 0)
+    private static func configureMaterials(in root: SCNNode, coordinator: Coordinator) {
+        root.enumerateChildNodes { node, _ in
+            guard let geometry = node.geometry else {
+                return
+            }
+
+            for (index, importedMaterial) in geometry.materials.enumerated() {
+                let material = SCNMaterial()
+                material.name = importedMaterial.name
+                material.lightingModel = .physicallyBased
+                material.isDoubleSided = true
+
+                switch importedMaterial.name {
+                case "Porcelain":
+                    material.diffuse.contents = NSColor(
+                        calibratedRed: 0.25,
+                        green: 0.31,
+                        blue: 0.38,
+                        alpha: 1
+                    )
+                    material.metalness.contents = 0.22
+                    material.roughness.contents = 0.36
+                    coordinator.porcelainMaterial = material
+                case "Graphite":
+                    material.diffuse.contents = NSColor(
+                        calibratedRed: 0.025,
+                        green: 0.035,
+                        blue: 0.055,
+                        alpha: 1
+                    )
+                    material.metalness.contents = 0.72
+                    material.roughness.contents = 0.23
+                case "StatusGlow":
+                    material.diffuse.contents = NSColor(calibratedWhite: 0.07, alpha: 1)
+                    material.metalness.contents = 0.35
+                    material.roughness.contents = 0.20
+                    coordinator.statusMaterial = material
+                default:
+                    break
+                }
+
+                geometry.replaceMaterial(at: index, with: material)
+            }
+        }
+    }
+
+    private func updateBlinkAnimation(for coordinator: Coordinator) {
+        let actionKey = "naturalBlink"
+
+        guard animatesPoseChanges else {
+            coordinator.bustRoot?.removeAction(forKey: actionKey)
+            for eye in coordinator.eyeNodes {
+                eye.scale.y = 1
+            }
+            return
+        }
+
+        guard
+            coordinator.eyeNodes.count == 2,
+            coordinator.bustRoot?.action(forKey: actionKey) == nil
+        else {
+            return
+        }
+
+        coordinator.bustRoot?.runAction(
+            Self.blinkSequence(coordinator: coordinator),
+            forKey: actionKey
+        )
+    }
+
+    private static func blinkSequence(coordinator: Coordinator) -> SCNAction {
+        let wait = SCNAction.wait(duration: 3.8, withRange: 2.2)
+        let close = SCNAction.customAction(duration: 0.065) { [weak coordinator] _, elapsed in
+            let progress = min(max(elapsed / 0.065, 0), 1)
+            coordinator?.eyeNodes.forEach { $0.scale.y = 1 - 0.92 * progress }
+        }
+        close.timingMode = .easeIn
+
+        let hold = SCNAction.wait(duration: 0.035)
+        let open = SCNAction.customAction(duration: 0.10) { [weak coordinator] _, elapsed in
+            let progress = min(max(elapsed / 0.10, 0), 1)
+            coordinator?.eyeNodes.forEach { $0.scale.y = 0.08 + 0.92 * progress }
+        }
+        open.timingMode = .easeOut
+
+        return .repeatForever(.sequence([wait, close, hold, open]))
+    }
+
+    private static var bustAssetURL: URL? {
+        if let appResource = Bundle.main.url(
+            forResource: "AirPostureBust",
+            withExtension: "usdz"
+        ) {
+            return appResource
+        }
+
+#if SWIFT_PACKAGE
+        return Bundle.module.url(forResource: "AirPostureBust", withExtension: "usdz")
+#else
+        return nil
+#endif
     }
 }
 

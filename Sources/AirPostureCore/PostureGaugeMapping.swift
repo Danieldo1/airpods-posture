@@ -56,7 +56,7 @@ public enum PostureGaugeMapping {
     }
 
     public static func pitchVisualDegrees(_ pitch: Double) -> Double {
-        clamp(pitch, min: -28, max: 16) * 0.55
+        clamp(pitch, min: -30, max: 20) * 0.70
     }
 
     public static func rollVisualDegrees(_ roll: Double) -> Double {
@@ -113,7 +113,7 @@ public enum PostureGaugeMapping {
     ) -> BustPose {
         let total = bustEulerRadians(pitch: pitch, roll: roll, yaw: yaw)
         let neck = BustVector3(
-            x: total.x * 0.55,
+            x: total.x * 0.35,
             y: total.y * 0.25,
             z: total.z * 0.35
         )
@@ -122,13 +122,15 @@ public enum PostureGaugeMapping {
             y: total.y - neck.y,
             z: total.z - neck.z
         )
-        let slouch = clamp(max(-pitch, 0) / 28, min: 0, max: 1)
+        let slouch = clamp(max(-pitch, 0) / 30, min: 0, max: 1)
 
         return BustPose(
             neckEulerRadians: neck,
             headEulerRadians: head,
-            neckOffset: BustVector3(x: 0, y: -0.02 * slouch, z: 0.04 * slouch),
-            headOffset: BustVector3(x: 0, y: -0.07 * slouch, z: 0.14 * slouch)
+            // Rotation carries the chin down; a restrained forward translation
+            // suggests cervical flexion without stretching the face vertically.
+            neckOffset: BustVector3(x: 0, y: 0, z: 0.015 * slouch),
+            headOffset: BustVector3(x: 0, y: 0, z: 0.025 * slouch)
         )
     }
 

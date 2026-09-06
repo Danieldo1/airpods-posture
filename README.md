@@ -92,7 +92,7 @@ Alerts are throttled to once every 45 seconds. Overlays never block clicks. Pres
 
 The popover is the only window.
 
-- **Attitude pad** — live tilt and lean, with a short motion trail.
+- **Sculptural posture view** — a large faceted titanium-ceramic bust mirrors tilt, lean, and optional head turn. Its rigged eyes move with the head and blink at irregular, natural intervals. The collar carries the posture color without flooding the face; there is no chart frame, ellipse, marker, trail, or grid behind it.
 - **Coach chip** — a one-line cue plus signed Tilt / Lean values.
 - **This week** — a compact upright/slouch/off-neutral summary stays visible; expand the full-width row for Monday–Sunday bars and hover a day for its exact value. A week starts Monday in your local timezone. Only time while tracking is on, AirPods are connected, and the active preset is calibrated counts.
 - **Desk / Sofa** — two saved neutrals. Switching applies that preset immediately. An uncalibrated preset pauses the gauge and weekly stats until you calibrate it.
@@ -135,12 +135,18 @@ Sources/AirPostureMac/
   WeeklyAnalyticsStore.swift      Local Monday–Sunday week counters
   AlertService.swift              Banner + system sounds via AVFoundation
   MenuBarView.swift               Menu-bar console
-  PostureGaugeView.swift          Attitude pad, trail, coach chip, and bust
-  InstrumentBustView.swift        SceneKit glass/metal bust
+  PostureGaugeView.swift          Full-size bust stage, coach chip, and grace bar
+  InstrumentBustView.swift        SceneKit loader, rig controls, materials, and lighting
+  Resources/AirPostureBust.usdz   Optimized runtime bust and three-bone rig
   MenuBarIcon.swift               Status symbol families
 Resources/Info.plist              Motion, Focus Status, and LSUIElement keys
 Sources/AirPostureCore/
   PostureGaugeMapping.swift       Pure pose mapping + yaw wrap/gate helpers
+DesignAssets/
+  AirPostureBust.blend            Editable Blender source with named controls
+  AirPostureBust-preview.png      Source-rendered material preview
+Tools/Blender/
+  build_airposture_bust.py        Rebuilds the .blend, preview, and USDZ
 ```
 
 Privacy: all processing is local. No network calls, no accounts. Weekly totals live in `~/Library/Application Support/AirPosture/weekly-analytics.json` on this Mac and are pruned after 90 days.

@@ -2,19 +2,21 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the hero-gauge SF Symbol stickman with a centered SceneKit glass/metal bust and a soft horizon wash, keeping the ellipse + pip as the distance-to-edge read.
+**Goal:** Replace the hero-gauge SF Symbol stickman and diagram chrome with a large centered SceneKit titanium-ceramic bust.
 
-**Architecture:** Pure mapping lives in a new `AirPostureCore` library so tests can run without AppKit. `AttitudePad` draws wash, glow, crosshair, ellipse, trail, and pip. `InstrumentBustView` is an `NSViewRepresentable` around one `SCNView` built from primitives. `PostureTrackingManager` is unchanged.
+**Architecture:** Pure mapping lives in a new `AirPostureCore` library so tests can run without AppKit. `PostureGaugeView` presents the full-size bust directly, followed by the coach chip and reserved grace bar. `InstrumentBustView` loads a bundled, Blender-authored USDZ and drives its named bones. `PostureTrackingManager` is unchanged.
+
+> **Revision 2026-09-06:** The earlier `AttitudePad` task is superseded. The rounded chart frame, threshold ellipse, dot, trail, wash, crosshair, and gridlines are removed; the bust is scaled to fill most of the same 188pt hero area.
 
 **Tech Stack:** Swift 5.9, macOS 14+, SwiftUI, SceneKit, XCTest, Swift Package Manager (`./build.sh` is the app build).
 
 ## Global Constraints
 
 - macOS 14+, bundle `com.macposture.airposture`, accessory `MenuBarExtra` only
-- Public AppKit / SwiftUI / SceneKit only — no AvatarKit, no downloaded meshes
+- Public AppKit / SwiftUI / SceneKit only — no AvatarKit and no runtime model downloads
 - Motion data never leaves the Mac
-- Pad 188pt, popover 360pt, bust ~72pt, one locked look
-- Stickman is gone; SceneKit failure → pad only, no `figure.stand` fallback
+- Hero 188pt, popover 360pt, bust ~157pt at root scale 1.35, one locked look
+- Stickman and attitude diagram are gone; SceneKit failure → coach chip and grace bar only
 - Overlay Warm/Cool/Alert never tint this pad
 - This spec supersedes only the seated/stand figure line; console spec wins on everything else
 - Frequent commits are optional here: the user asked to implement, not to commit each task
@@ -26,6 +28,9 @@
 - Create: `Sources/AirPostureCore/PostureGaugeMapping.swift`
 - Create: `Tests/AirPostureMacTests/PostureGaugeMappingTests.swift`
 - Create: `Sources/AirPostureMac/InstrumentBustView.swift`
+- Create: `Sources/AirPostureMac/Resources/AirPostureBust.usdz`
+- Create: `DesignAssets/AirPostureBust.blend`
+- Create: `Tools/Blender/build_airposture_bust.py`
 - Modify: `Package.swift`
 - Modify: `Sources/AirPostureMac/PostureGaugeView.swift`
 - Modify: `AirPostureMac.xcodeproj/project.pbxproj`
@@ -110,7 +115,7 @@ displayed = isCalibrated ? (pitch, roll) : (0, 0)
 xNorm = clamp(roll / 20, -1, 1)
 yNorm = clamp(-pitch / 30, -1, 1)
 washBank = xNorm * 18
-pitchVisual = clamp(pitch, -28, 16) * 0.55
+pitchVisual = clamp(pitch, -30, 20) * 0.70
 rollVisual  = clamp(roll,  -24, 24) * 0.45
 eulerX = -pitchVisual * π/180
 eulerY = 0
@@ -179,26 +184,22 @@ Remove `figureName`, `figurePitch`, `figureRoll`, and the `Image(systemName:)` o
 
 Scene (once in `makeNSView`):
 
-- Camera on +Z, orthographic scale ~1.15, head faces +Z
-- Head sphere scale `(0.92, 1.0, 0.88)`, PBR glass: metalness 0.18, roughness 0.08, transparency 0.38
-- Neck cylinder, metalness 0.85, roughness 0.32
-- Two flattened shoulder spheres scale `(1.1, 0.28, 0.7)`
-- Key light upper-left intensity 800, fill front intensity 250
+- Load `AirPostureBust.usdz` from the application bundle
+- Camera on +Z, orthographic scale 1.55; turn the Y-up imported model to face +Z and scale it to 1.35
+- Resolve `CTRL_neck` and `CTRL_head`; store their rest positions
+- Keep the cranium/face rigid on `CTRL_head`, blend only the lower neck, and use a front-aware jaw mask
+- Give the head 65% of pitch and the neck 35%; use only restrained forward offsets and no vertical bone translation
+- Rigid-skin both eye meshes to `CTRL_head`; drive one synchronized randomized blink action and disable it under Reduce Motion
+- Replace the imported `Porcelain`, `Graphite`, and `StatusGlow` materials with native SceneKit PBR materials
+- Key light upper-left intensity 100, fill front intensity 35, cool rim intensity 60
 - `autoenablesDefaultLighting = false`, clear background, no camera control
 - Antialiasing 4x when available
 
-`updateNSView`: set root `eulerAngles` from `bustEulerRadians`; set head `emission` from band table; do not rebuild the graph.
+`updateNSView`: split mapped euler and slouch offset across the neck/head bones; set subtle ceramic emission plus the stronger collar emission; do not rebuild the graph.
 
 `onDisappear`: `isPlaying = false`. SwiftUI: `.allowsHitTesting(false)` `.accessibilityHidden(true)` `.frame(height: 188)`.
 
-Emission:
-
-| Band | Color | Intensity |
-| --- | --- | --- |
-| upright | system green | 0.35 |
-| leaning | system orange | 0.40 |
-| slouching | system red | 0.45 |
-| other | white | 0.08 |
+Emission follows the ceramic/collar intensity table in the design spec.
 
 If `SCNView` cannot be created, return a clear `NSView` and log once.
 

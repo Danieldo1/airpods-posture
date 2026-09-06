@@ -18,7 +18,10 @@ let package = Package(
         .executableTarget(
             name: "AirPosture",
             dependencies: ["AirPostureCore"],
-            path: "Sources/AirPostureMac"
+            path: "Sources/AirPostureMac",
+            resources: [
+                .process("Resources")
+            ]
         ),
         .executableTarget(
             name: "AirPostureMappingCheck",

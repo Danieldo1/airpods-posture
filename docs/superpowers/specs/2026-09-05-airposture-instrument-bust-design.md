@@ -1,8 +1,8 @@
 # AirPosture instrument bust
 
-Design spec for replacing the hero-gauge stickman with a centered glass/metal bust and a soft horizon wash. Implementation must follow this document.
+Design spec for replacing the hero-gauge stickman and attitude diagram with a centered, rigged titanium-ceramic bust. Implementation must follow this document.
 
-**Status:** approved  
+**Status:** revised and approved
 **Date:** 2026-09-05  
 **Platform:** macOS 14+, SwiftUI `MenuBarExtra` with `.window` style, accessory app  
 **Bundle ID:** `com.macposture.airposture`
@@ -11,7 +11,7 @@ This spec **supersedes** only one line in `2026-09-05-airposture-console-overlay
 
 > Keep the seated/stand figure overlay, slightly larger (30pt).
 
-Every other decision in that document stays in force: pad height 188pt, solid 2pt threshold ellipse, 14pt haloed pip, 8-sample trail at ~8 Hz, coach chip, grace bar, VoiceOver combine, overlays, week store, ellipse math, menu-bar icon families.
+Every other non-hero decision in that document stays in force: 188pt hero height, coach chip, grace bar, VoiceOver combine, overlays, week store, scoring ellipse math, and menu-bar icon families. The visible threshold ellipse, pip, trail, wash, frame, and gridlines are retired.
 
 ---
 
@@ -25,9 +25,9 @@ Constraints that stay non-negotiable:
 
 - Menu-bar popover only. No extra window, no Dock HUD.
 - Public AppKit / SwiftUI / SceneKit only. No AvatarKit, no Memoji, no private frameworks.
-- Motion data never leaves the Mac. No downloaded 3D assets.
-- AirPods give pitch and roll. Optional session-relative yaw may rotate the bust and gate scoring when looking aside; it still does not join the tilt/lean ellipse. No face mesh or blend shapes.
-- Reduce Motion must snap; it must not keep a looping idle.
+- Motion data never leaves the Mac. The model is bundled with the app; there are no runtime downloads.
+- AirPods give pitch and roll. Optional session-relative yaw may rotate the bust and gate scoring when looking aside; it still does not join the tilt/lean ellipse. No camera face capture or blend shapes.
+- Reduce Motion must snap pose changes and disable the periodic eye blink.
 
 ---
 
@@ -35,14 +35,14 @@ Constraints that stay non-negotiable:
 
 These are locked. If a later idea conflicts with this list, this list wins.
 
-1. **Centered bust, traveling pip.** The sculpture stays in the middle and only rotates. Distance-to-edge stays on the pip + trail.
-2. **Instrument sculpture, not a face.** Smoked-glass ellipsoid head, short satin-metal neck, a hint of shoulders. No eyes, mouth, hair, skin-tone picker, or photo mapping.
-3. **Horizon wash is atmosphere, not a flight deck.** Soft cool-above / warm-below band behind the pad chrome. No pitch ladder, no tick marks, no ADI sky box.
+1. **Large centered bust, no attitude plot.** The sculpture fills most of the 188pt hero height and only rotates/deforms. Do not draw a chart frame, threshold ellipse, marker dot, trail, wash, crosshair, or gridlines.
+2. **Sculptural person, not a white stickman.** Use the faceted head/neck/clavicle bust derived from Blender's CC0 Human Base Meshes bundle. Titanium-ceramic facets, graphite eye insets and plinth, and one narrow status collar. No hair, skin-tone picker, photo mapping, or photoreal skin.
+3. **Quiet transparent stage.** The SceneKit view sits directly in the hero area with no decorative diagram chrome behind it.
 4. **One locked look.** No new settings picker, no material family, no Rive / Lottie dependency.
-5. **SceneKit primitives at runtime.** No `.usdz`, `.glb`, or network fetch.
+5. **Editable Blender source, bundled USDZ at runtime.** Keep `DesignAssets/AirPostureBust.blend` with `CTRL_chest`, `CTRL_neck`, and `CTRL_head`; ship the optimized `AirPostureBust.usdz`. No network fetch.
 6. **Same published pose as today.** `PostureTrackingManager` does not gain fields. Uncalibrated / disconnected still force displayed pitch and roll to `0`.
 7. **Stickman is gone.** If SceneKit fails, the pad continues without a figure. Do not fall back to `figure.stand`.
-8. **Overlay Warm / Cool / Alert never tint this pad.** Band green / orange / red tints the ellipse, pip, trail, and glass emission only. Wash stays neutral gray.
+8. **Overlay Warm / Cool / Alert never tint this view.** Band green / orange / red affects only the subtle ceramic emission and status collar.
 9. **Menu-bar icon families stay as they are.** This spec does not redesign `MenuBarIcon`.
 10. **macOS 14+ and `CMHeadphoneMotionManager` stay the floor.**
 
@@ -56,7 +56,6 @@ These are locked. If a later idea conflicts with this list, this list wins.
 | --- | --- |
 | `PostureTrackingManager` | Source of truth for pitch, roll, band, thresholds, captions |
 | `PostureGaugeView` | Hero stack: pad, coach chip, grace bar. Same public inputs. |
-| `AttitudePad` | Canvas chrome: wash, crosshair, ellipse, trail, pip |
 | `CoachChip`, `PostureFormatting` | Unchanged |
 | Overlay manager, week store, settings | Unchanged |
 
@@ -65,7 +64,7 @@ These are locked. If a later idea conflicts with this list, this list wins.
 | Object | Responsibility |
 | --- | --- |
 | `PostureGaugeMapping` | Pure functions for wash offset, wash bank, bust euler, and displayed pose |
-| `InstrumentBustView` | `NSViewRepresentable` wrapping one `SCNView`. Builds the primitive bust, applies euler + emission, pauses when off-screen |
+| `InstrumentBustView` | `NSViewRepresentable` wrapping one `SCNView`. Loads the bundled rigged bust, applies bone euler + emission, pauses when off-screen |
 
 `PostureTrackingManager` does not import SceneKit and does not draw.
 
@@ -73,14 +72,12 @@ Suggested layout:
 
 ```
 PostureGaugeView
-  ZStack
-    AttitudePad          // Canvas: wash → crosshair → ellipse → trail → pip
-    InstrumentBustView   // SceneKit, centered, hit-testing off
+  InstrumentBustView     // SceneKit, large, centered, hit-testing off
   CoachChip
   ProgressView           // leaning / slouching only
 ```
 
-Popover width stays **360pt**. Pad height stays **188pt**. Bust visual height is **~72pt**.
+Popover width stays **360pt**. Hero height stays **188pt**. Bust visual height is approximately **157pt**.
 
 ### Package
 
@@ -98,21 +95,15 @@ Do not move tracker, overlays, or views into the library.
 
 ## Visual contract
 
-Layers, back to front, clipped to the existing 16pt-rounded pad:
+The 188pt hero is a transparent, uninterrupted sculpture stage:
 
-1. **Horizon wash** (Canvas)
-2. **Dashed crosshair** (unchanged)
-3. **Threshold ellipse** — 2pt stroke plus a short outer glow in the band color. Math and size unchanged.
-4. **Trail** — last 8 samples, 10→4pt, opacity 0.35→0.05, oldest first. Reduce Motion: omit.
-5. **Pip** — 14pt fill + white halo. Unchanged geometry.
-6. **Bust** — SceneKit, dead-center, does not translate.
+1. **Bust** — SceneKit, dead-center, scaled to `1.35`, with the head, clavicle, collar, and plinth clearly readable.
+2. **Nothing behind it** — no rounded square, ellipse, marker dot, trail, wash, crosshair, or gridlines.
+3. **No replacement decoration** — the larger figure and its lighting provide the hierarchy.
 
 Idle / uncalibrated / disconnected / tracking paused:
 
 - Displayed pitch and roll are `0`
-- Wash centered and level
-- Pip at origin
-- Ellipse uses secondary color
 - Bust faces the camera, dim emission
 - Coach chip still shows the existing caption (“—”, “Set a neutral posture…”, etc.)
 
@@ -134,29 +125,23 @@ xNorm = clamp(roll / maxLean, -1, 1)
 yNorm = clamp(-pitch / maxTilt, -1, 1)
 ```
 
-`PostureGaugeMapping` must expose these so wash and pip cannot drift apart.
+These helpers remain tested for compatibility, but the bust-only hero does not render a wash or pip.
 
-### Horizon wash
+### Retired diagram mapping
 
-- Vertical offset equals the pip’s Y offset from pad center (same `yNorm`, same inset).
-- Bank angle = `clamp(roll / maxLean, -1, 1) * 18` degrees.
-- Draw a tall two-stop vertical gradient (at least 3× pad height) so both bands remain visible after offset. Clip to the rounded pad.
-- Opacity **0.15**.
-- Colors are fixed, independent of overlay tint and band:
-  - Above: `sRGB(0.46, 0.52, 0.60)`
-  - Below: `sRGB(0.58, 0.50, 0.42)`
-- Reduce Motion: draw the mapped pose immediately. Do not animate the wash.
+`normalizedPoint` and `washBankDegrees` may remain in `AirPostureCore` while older mapping checks depend on them. `PostureGaugeView` must not call them or run a trail sampling task.
 
 ### Bust rotation
 
-Reuse the old stickman clamps so a hard slouch does not invert the head:
+Use asymmetric anatomical clamps so chin-down is clearly readable without
+inverting the head, while chin-up remains restrained:
 
 ```
-pitchVisual = clamp(pitch, -28, 16) * 0.55
+pitchVisual = clamp(pitch, -30, 20) * 0.70
 rollVisual  = clamp(roll,  -24, 24) * 0.45
 ```
 
-Camera: on `+Z`, looking at the origin. Head faces `+Z` (toward camera).
+Camera: on `+Z`, looking at the origin. Head faces `+Z` (toward camera). Imported root scale is `1.35`.
 
 User-visible rules:
 
@@ -173,16 +158,37 @@ eulerZ = -rollVisual * π/180
 
 Positive `yawDelta` (look right) must turn the bust toward the right side of the pad (same side as positive lean).
 
-Set euler angles directly on the bust root each `updateNSView`. Do not use `SCNAction`, springs, or implicit `CATransaction` animation. Reduce Motion therefore needs no extra branch for rotation besides “values are already snapped because the tracker published them.”
+Split euler angles between `CTRL_neck` and `CTRL_head` each `updateNSView`. The
+head receives 65% of pitch and the neck receives 35%; this creates a readable
+nod while keeping the shoulders planted. At maximum chin-down, translate the
+neck and head forward only `0.015` and `0.025` model units respectively. Do not
+translate either bone vertically—the rotation itself lowers the chin, while a
+vertical bone offset stretches the facial transition. Do not use `SCNAction`
+or springs for posture pose updates. Reduce Motion uses a zero-duration
+`SCNTransaction`; ordinary tracking uses only a short ease-out settle.
 
-### Glass emission
+### Eye rig and blink
 
-| Band | Emission |
-| --- | --- |
-| `.upright` | system green, intensity 0.35 |
-| `.leaning` | system orange, intensity 0.40 |
-| `.slouching` | system red, intensity 0.45 |
-| `.paused`, `.uncalibrated`, `.waitingForHeadphones` | white at intensity 0.08 |
+`GraphiteEyeLeft` and `GraphiteEyeRight` are rigid-skinned to `CTRL_head`, with
+their object origins centered before export. Head and neck movement must carry
+the eyes as one assembled face; no eye may remain behind when the bust turns.
+
+At runtime, both eyes share a quiet repeating blink sequence:
+
+- randomized wait between approximately 2.7 and 4.9 seconds
+- 65ms close, 35ms hold, 100ms open
+- scale only each eye's local vertical axis around its centered origin
+- pause naturally with the `SCNView` when the popover closes
+- remove the blink action and restore open eyes when Reduce Motion is enabled
+
+### Bust emission
+
+| Band | Ceramic emission | Collar emission |
+| --- | --- | --- |
+| `.upright` | system green, intensity 0.055 | system green, intensity 1.25 |
+| `.leaning` | system orange, intensity 0.065 | system orange, intensity 1.45 |
+| `.slouching` | system red, intensity 0.075 | system red, intensity 1.65 |
+| `.paused`, `.uncalibrated`, `.waitingForHeadphones` | white at intensity 0.015 | white at intensity 0.18 |
 
 Snap on band change. Do not cross-fade through rainbow.
 
@@ -198,38 +204,37 @@ Required configuration:
 - `isOpaque = false`
 - `wantsLayer = true`
 - `allowsCameraControl = false`
-- `autoenablesDefaultLighting = false` — add two lights: key (upper-left, intensity ~800) and fill (front-dim, intensity ~250)
+- `autoenablesDefaultLighting = false` — add three restrained lights: key (upper-left, intensity ~100), fill (front-dim, intensity ~35), and cool rim (intensity ~60)
 - Antialiasing: multisampling 4x if the device reports it, else none
 - `isPlaying = true` only while the representable is in the hierarchy
 - `onDisappear`: `isPlaying = false` so a closed popover does not keep a Metal renderer alive
 - SwiftUI wrapper: `.allowsHitTesting(false)` and `.accessibilityHidden(true)`
 - The `SCNView` must not become first responder
 
-Bust built once in `makeNSView`:
+Bust loaded once in `makeNSView` from the application bundle:
 
-- Head: sphere, scale `(0.92, 1.0, 0.88)`, smoked glass — `lightingModel = .physicallyBased`, `metalness = 0.18`, `roughness = 0.08`, `transparency = 0.38`, `emission` from the table above
-- Neck: short cylinder under the head, `metalness = 0.85`, `roughness = 0.32`, no transparency
-- Shoulders: two flattened spheres at the base (`scale (1.1, 0.28, 0.7)` each), same metal as the neck, so they read as a stand, not a torso
+- `PorcelainBust`: approximately 2,850 vertices / 5,700 triangles, deliberately flat-shaded so the face remains sculptural at menu-bar scale
+- `GraphiteEyeLeft`, `GraphiteEyeRight`, and `GraphitePlinth`: dark PBR graphite
+- `StatusCollar`: separate emissive material carrying green / orange / red state
+- `AirPostureRig`: `CTRL_chest` → `CTRL_neck` → `CTRL_head`; the skinner must reference all three bones
+- Both eye meshes: rigid skin weight `1.0` on `CTRL_head`
+- Cranium and face: near-rigid `CTRL_head` weighting, including a front-aware jaw mask; blend deformation stays in the lower neck
 
-Do not load files from disk. Do not add a floor plane, shadow catcher, or environment map that requires an asset catalog HDR.
+Replace imported USD materials with native `SCNMaterial` instances by material name for predictable SceneKit rendering. Do not add a floor plane, shadow catcher, or external environment map.
 
 Coordinator updates on `updateNSView`:
 
-- Apply `eulerX/Y/Z` to the bust root node
-- Apply emission to the head material only
+- Apply the mapped euler and slouch offset to the neck/head bones
+- Apply subtle emission to the ceramic and the stronger state read to the collar
 - Do not rebuild the scene graph on every frame
 
-If `SCNView` / Metal cannot be created, return an empty clear `NSView` and log once. `AttitudePad` still draws.
+If `SCNView` / Metal cannot be created, return an empty clear `NSView` and log once. The coach chip and grace bar still draw.
 
 ---
 
-## AttitudePad changes
+## Retired attitude diagram
 
-Keep the existing frame fill, dashed crosshair, ellipse, trail, and pip.
-
-Add the wash as the first calibrated (and idle) layer inside the rounded clip. Idle still draws the wash at origin so the pad does not go flat gray when uncalibrated.
-
-Ellipse gain: after the 2pt stroke, stroke a second ellipse inset by **-3pt** (outside) at the same band color with opacity **0.22** and line width **6**. That is the “short outer glow.” Reduce Transparency: skip the glow, keep the 2pt ring.
+`AttitudePad`, `TrailSample`, and the 125ms trail task are removed from `PostureGaugeView`. Thresholds continue to affect posture scoring in `PostureTrackingManager`; they are simply no longer drawn in the hero.
 
 ---
 
@@ -239,7 +244,7 @@ Unchanged from the console spec:
 
 - One VoiceOver element on the gauge container (`accessibilityElement(children: .combine)`)
 - Value: caption + signed tilt + signed lean
-- Chip, wash, pip, trail, and bust are `accessibilityHidden`
+- Chip and bust are `accessibilityHidden`
 - No new buttons or focusable SceneKit hits
 
 ---
@@ -248,11 +253,11 @@ Unchanged from the console spec:
 
 | Condition | Behavior |
 | --- | --- |
-| SceneKit / Metal unavailable | Hide bust. Pad + wash + pip remain. No stickman. |
+| SceneKit / Metal unavailable | Hide bust; keep the coach chip and grace bar. No stickman fallback. |
 | Popover closed | Pause `SCNView`. |
 | Headphones drop, tracking paused, uncalibrated | Displayed pose `0`. Idle visual contract above. |
-| Reduce Motion | Snap wash and bust. No trail. |
-| Reduce Transparency | Drop ellipse glow. Do not flatten the glass into an SF Symbol. |
+| Reduce Motion | Snap bust pose changes; stop blinking and leave both eyes open. |
+| Reduce Transparency | No special hero treatment is needed. |
 | Focus / snooze / overlay | Irrelevant to this spec. Existing overlay rules stand. |
 
 ---
@@ -265,7 +270,7 @@ Required cases:
 
 1. Zero pose → wash offset 0, bank 0, euler 0, pip at center.
 2. Uncalibrated flag → treat as zero even if raw deltas are non-zero (the flag is applied before mapping; test `displayedPose` helper).
-3. Pitch `−28` and `+16` sit on the clamp edges; `−40` and `+30` do not exceed them.
+3. Pitch `−30` and `+20` sit on the clamp edges; `−40` and `+30` do not exceed them.
 4. Roll `±24` sit on the clamp edges; `±40` do not exceed them.
 5. Chin-down (negative pitch) → `eulerX > 0` with the locked conversion.
 6. Positive roll → pip X `>` center, `eulerZ < 0`.
@@ -274,8 +279,12 @@ Required cases:
 
 Manual check (not automated):
 
-- Open the popover, slouch, sit up: bust rotates, pip travels, wash banks, ellipse goes green → orange → red.
-- Enable Reduce Motion: trail disappears; wash and bust jump.
+- Open the popover, slouch, sit up: the enlarged bust deforms and its collar goes green → orange → red.
+- Compare maximum chin-down and chin-up: the skull and jaw keep their proportions while the neck bends.
+- Confirm there is no rounded diagram frame, ellipse, dot, trail, wash, crosshair, or gridline.
+- Turn the bust in both directions: the eyes remain seated in the head.
+- Watch through several idle intervals: the eyes blink together without jumping.
+- Enable Reduce Motion: bust pose changes snap and the eyes remain open.
 - Quit while the popover is open: app exits cleanly.
 - Disconnect AirPods: idle contract.
 
@@ -284,10 +293,10 @@ Manual check (not automated):
 ## Implementation order
 
 1. `AirPostureCore` + `PostureGaugeMapping` + tests (red, then green).
-2. Horizon wash + ellipse glow in `AttitudePad`.
-3. Remove the SF Symbol overlay.
-4. `InstrumentBustView` with a static facing bust (no rotation).
-5. Wire euler + emission.
+2. Remove the SF Symbol and attitude diagram.
+3. `InstrumentBustView` with a static facing bust (no rotation).
+4. Wire bone euler + emission.
+5. Scale the imported root to `1.35` for the full-size stage.
 6. Pause on disappear; SceneKit-failure fallback.
 7. Manual pass of the checklist above.
 
@@ -297,7 +306,7 @@ Manual check (not automated):
 
 - Memoji, Animoji, AvatarKit, Contacts avatars
 - User photo or emoji as the token
-- Downloaded or bundled mesh files
+- Runtime model downloads or user-selectable avatar libraries
 - Rive / Lottie
 - Traveling bust
 - Full attitude HUD (horizon ladder, ticks, sky box)

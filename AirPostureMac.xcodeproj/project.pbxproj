@@ -18,6 +18,7 @@
 		A10000000000000000000009 /* WeeklyAnalyticsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* WeeklyAnalyticsStore.swift */; };
 		A10000000000000000000013 /* PostureGaugeMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* PostureGaugeMapping.swift */; };
 		A10000000000000000000014 /* InstrumentBustView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* InstrumentBustView.swift */; };
+		A10000000000000000000015 /* AirPostureBust.usdz in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* AirPostureBust.usdz */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +33,7 @@
 		A20000000000000000000012 /* WeeklyAnalyticsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyAnalyticsStore.swift; sourceTree = "<group>"; };
 		A20000000000000000000013 /* PostureGaugeMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PostureGaugeMapping.swift; path = ../AirPostureCore/PostureGaugeMapping.swift; sourceTree = "<group>"; };
 		A20000000000000000000014 /* InstrumentBustView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstrumentBustView.swift; sourceTree = "<group>"; };
+		A20000000000000000000015 /* AirPostureBust.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; name = AirPostureBust.usdz; path = ../Sources/AirPostureMac/Resources/AirPostureBust.usdz; sourceTree = "<group>"; };
 		A20000000000000000000007 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000008 /* AirPostureMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AirPostureMac.entitlements; sourceTree = "<group>"; };
 		A20000000000000000000009 /* AirPosture.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AirPosture.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -87,6 +89,7 @@
 		A40000000000000000000004 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				A20000000000000000000015 /* AirPostureBust.usdz */,
 				A20000000000000000000007 /* Info.plist */,
 			);
 			path = Resources;
@@ -153,6 +156,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000000000000000000015 /* AirPostureBust.usdz in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
