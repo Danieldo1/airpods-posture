@@ -24,6 +24,7 @@ STORE_SOURCES=(
   Sources/AirPostureMac/SoundPlayback.swift
   Sources/AirPostureMac/AlertService.swift
   Sources/AirPostureMac/WeeklyAnalyticsStore.swift
+  Sources/AirPostureMac/LivePostureReadings.swift
 )
 
 compile_and_run() {

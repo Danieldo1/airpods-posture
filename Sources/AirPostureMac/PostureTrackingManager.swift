@@ -52,6 +52,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         }
     }
     let analyticsObservations = PassthroughSubject<AnalyticsObservation, Never>()
+    let liveReadings = LivePostureReadings()
     @Published var isTrackingEnabled: Bool {
         didSet {
             defaults.set(isTrackingEnabled, forKey: SettingsKey.isTrackingEnabled)
@@ -60,6 +61,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
             } else {
                 stopMotionUpdates(resetLiveState: true)
             }
+            syncConsolePublications()
         }
     }
 
@@ -79,21 +81,22 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         }
     }
 
-    @Published private(set) var currentPitchDegrees: Double = 0
-    @Published private(set) var currentRollDegrees: Double = 0
-    @Published private(set) var currentYawDegrees: Double = 0
+    private(set) var currentPitchDegrees: Double = 0
+    private(set) var currentRollDegrees: Double = 0
+    private(set) var currentYawDegrees: Double = 0
     @Published private(set) var baselinePitchDegrees: Double?
     @Published private(set) var baselineRollDegrees: Double?
-    @Published private(set) var pitchDeltaDegrees: Double = 0
-    @Published private(set) var rollDeltaDegrees: Double = 0
-    @Published private(set) var yawDeltaDegrees: Double = 0
-    @Published private(set) var deviationDegrees: Double = 0
-    @Published private(set) var dominantAxis: DominantAxis = .tilt
-    @Published private(set) var isPastThreshold = false
-    @Published private(set) var isLookingAway = false
-    @Published private(set) var isSlouching = false
-    @Published private(set) var slouchElapsedSeconds: Double = 0
-    @Published private(set) var slouchProgress: Double = 0
+    private(set) var pitchDeltaDegrees: Double = 0
+    private(set) var rollDeltaDegrees: Double = 0
+    private(set) var yawDeltaDegrees: Double = 0
+    private(set) var deviationDegrees: Double = 0
+    private(set) var dominantAxis: DominantAxis = .tilt
+    private(set) var isPastThreshold = false
+    private(set) var isLookingAway = false
+    private(set) var isSlouching = false
+    private(set) var slouchElapsedSeconds: Double = 0
+    private(set) var slouchProgress: Double = 0
+    @Published private(set) var postureBand: PostureBand = .waitingForHeadphones
     @Published private(set) var didJustCalibrate = false
     @Published private(set) var authorizationDenied = false
     @Published private(set) var lastErrorMessage: String?
@@ -122,13 +125,33 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         return max(deviationDegrees / threshold, 0)
     }
 
-    var postureBand: PostureBand {
+    private func resolvedPostureBand() -> PostureBand {
         if !isTrackingEnabled { return .paused }
         if connectionStatus != .connected { return .waitingForHeadphones }
         if !isCalibrated { return .uncalibrated }
         if isSlouching { return .slouching }
         if isPastThreshold { return .leaning }
         return .upright
+    }
+
+    private func syncConsolePublications() {
+        let nextBand = resolvedPostureBand()
+        if postureBand != nextBand {
+            postureBand = nextBand
+        }
+        liveReadings.replace(
+            LivePostureSnapshot(
+                pitchDeltaDegrees: pitchDeltaDegrees,
+                rollDeltaDegrees: rollDeltaDegrees,
+                yawDeltaDegrees: yawDeltaDegrees,
+                dominantAxis: dominantAxis,
+                band: nextBand,
+                slouchProgress: slouchProgressClamped,
+                isCalibrated: isCalibrated && connectionStatus == .connected,
+                caption: coachingCaption,
+                isLookingAway: isLookingAway
+            )
+        )
     }
 
     var coachingCaption: String {
@@ -268,6 +291,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         baselineRollDegrees = preset == .desk ? deskRollDegrees : sofaRollDegrees
 
         super.init()
+        defer { syncConsolePublications() }
         guard let motionManager else { return }
         configureSleepObservers()
         motionManager.delegate = self
@@ -277,7 +301,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         if isTrackingEnabled {
             startMotionUpdates()
         } else {
-            connectionStatus = motionManager.isDeviceMotionAvailable ? .searching : .disconnected
+            setConnectionStatus(motionManager.isDeviceMotionAvailable ? .searching : .disconnected)
         }
     }
 
@@ -294,9 +318,10 @@ final class PostureTrackingManager: NSObject, ObservableObject {
                     self.motionFreshAfterUptime = self.monotonic()
                     self.hasReceivedMotionSample = false
                     self.lastSuccessfulMotionTime = nil
-                    self.connectionStatus = self.isTrackingEnabled ? .searching : .disconnected
+                    self.setConnectionStatus(self.isTrackingEnabled ? .searching : .disconnected)
                     self.resetSlouchState()
                     self.publishAnalytics(state: .inactive)
+                    self.syncConsolePublications()
                 }
             }
             sleepObservers.append(token)
@@ -318,6 +343,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
 
     func calibrate() {
         guard canCalibrate else { return }
+        defer { syncConsolePublications() }
         persistBaseline(pitch: currentPitchDegrees, roll: currentRollDegrees)
         resetLiveDeviation()
         rezeroSessionYaw()
@@ -335,28 +361,41 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     }
 
     func refreshAuthorizationStatus() {
-        authorizationDenied = CMHeadphoneMotionManager.authorizationStatus() == .denied
+        setAuthorizationDenied(CMHeadphoneMotionManager.authorizationStatus() == .denied)
+    }
+
+    private func setConnectionStatus(_ status: ConnectionStatus) {
+        if connectionStatus != status { connectionStatus = status }
+    }
+
+    private func setLastErrorMessage(_ message: String?) {
+        if lastErrorMessage != message { lastErrorMessage = message }
+    }
+
+    private func setAuthorizationDenied(_ denied: Bool) {
+        if authorizationDenied != denied { authorizationDenied = denied }
     }
 
     private func startMotionUpdates() {
+        defer { syncConsolePublications() }
         guard let motionManager else { return }
         refreshAuthorizationStatus()
-        lastErrorMessage = nil
+        setLastErrorMessage(nil)
         startHealthCheck()
 
         guard motionManager.isDeviceMotionAvailable else {
-            connectionStatus = .disconnected
-            lastErrorMessage = "Headphone motion is not available on this Mac."
+            setConnectionStatus(.disconnected)
+            setLastErrorMessage("Headphone motion is not available on this Mac.")
             return
         }
 
         if authorizationDenied {
-            connectionStatus = .disconnected
+            setConnectionStatus(.disconnected)
             return
         }
 
         if !hasReceivedMotionSample {
-            connectionStatus = .searching
+            setConnectionStatus(.searching)
         }
 
         guard !motionManager.isDeviceMotionActive else { return }
@@ -369,6 +408,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     }
 
     private func stopMotionUpdates(resetLiveState: Bool) {
+        defer { syncConsolePublications() }
         publishAnalytics(state: .inactive)
         motionManager?.stopDeviceMotionUpdates()
         stopHealthCheck()
@@ -377,16 +417,17 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         clearSessionYaw()
         if resetLiveState {
             resetSlouchState()
-            connectionStatus = .disconnected
+            setConnectionStatus(.disconnected)
         }
     }
 
     private func handleMotion(_ motion: CMDeviceMotion?, error: Error?) {
+        defer { syncConsolePublications() }
         guard isTrackingEnabled, !isSystemSleeping else { return }
         if let error {
-            lastErrorMessage = error.localizedDescription
+            setLastErrorMessage(error.localizedDescription)
             hasReceivedMotionSample = false
-            connectionStatus = .searching
+            setConnectionStatus(.searching)
             clearSessionYaw()
             resetSlouchState()
             return
@@ -412,11 +453,11 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         // Observers see a complete result, including unchanged zones after wake/reconnect.
         defer { publishScoringObservation() }
 
-        lastErrorMessage = nil
-        authorizationDenied = false
+        setLastErrorMessage(nil)
+        setAuthorizationDenied(false)
         hasReceivedMotionSample = true
         lastSuccessfulMotionTime = now()
-        connectionStatus = .connected
+        setConnectionStatus(.connected)
 
         let rawPitch = pitch * 180.0 / .pi
         let rawRoll = roll * 180.0 / .pi
@@ -547,6 +588,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     }
 
     private func applyActivePresetBaselines(resetSlouch: Bool) {
+        defer { syncConsolePublications() }
         switch activePreset {
         case .desk:
             baselinePitchDegrees = deskPitchDegrees
@@ -577,17 +619,19 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     }
 
     private func handleHeadphonesConnected() {
+        defer { syncConsolePublications() }
         if isTrackingEnabled && !hasReceivedMotionSample {
-            connectionStatus = .searching
+            setConnectionStatus(.searching)
             clearSessionYaw()
             startMotionUpdates()
         }
     }
 
     private func handleHeadphonesDisconnected() {
+        defer { syncConsolePublications() }
         hasReceivedMotionSample = false
         lastSuccessfulMotionTime = nil
-        connectionStatus = .disconnected
+        setConnectionStatus(.disconnected)
         clearSessionYaw()
         resetSlouchState()
     }
@@ -607,17 +651,18 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     }
 
     private func performHealthCheck() {
+        defer { syncConsolePublications() }
         guard isTrackingEnabled, let lastSuccessfulMotionTime else { return }
         let silence = now().timeIntervalSince(lastSuccessfulMotionTime)
 
         if silence >= Motion.disconnectSilence {
             hasReceivedMotionSample = false
-            connectionStatus = .disconnected
+            setConnectionStatus(.disconnected)
             clearSessionYaw()
             resetSlouchState()
         } else if silence >= Motion.reconnectSilence {
             hasReceivedMotionSample = false
-            connectionStatus = .searching
+            setConnectionStatus(.searching)
             clearSessionYaw()
             resetSlouchState()
         }

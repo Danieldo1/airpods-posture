@@ -5,17 +5,11 @@ import SwiftUI
 #endif
 
 struct PostureGaugeView: View {
-    let pitchDelta: Double
-    let rollDelta: Double
-    let yawDelta: Double
-    let dominantAxis: DominantAxis
-    let band: PostureBand
-    let slouchProgress: Double
-    let isCalibrated: Bool
-    let caption: String
-    let isLookingAway: Bool
+    @ObservedObject var readings: LivePostureReadings
     let showTurnValue: Bool
     let showHeadTurn: Bool
+
+    private var snapshot: LivePostureSnapshot { readings.snapshot }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -23,31 +17,31 @@ struct PostureGaugeView: View {
                 pitch: displayedPose.pitch,
                 roll: displayedPose.roll,
                 yaw: showHeadTurn ? displayedYaw : 0,
-                band: band
+                band: snapshot.band
             )
             .frame(maxWidth: .infinity)
             .frame(height: 188)
 
             CoachChip(
-                caption: caption,
-                dominantAxis: dominantAxis,
+                caption: snapshot.caption,
+                dominantAxis: snapshot.dominantAxis,
                 pitchDelta: displayedPose.pitch,
                 rollDelta: displayedPose.roll,
                 yawDelta: displayedYaw,
-                isCalibrated: isCalibrated,
-                isLookingAway: isLookingAway,
+                isCalibrated: snapshot.isCalibrated,
+                isLookingAway: snapshot.isLookingAway,
                 showTurnValue: showTurnValue
             )
             .accessibilityHidden(true)
 
-            ProgressView(value: slouchProgress)
+            ProgressView(value: snapshot.slouchProgress)
                 .progressViewStyle(.linear)
                 .tint(statusColor)
                 .opacity(showsGraceProgress ? 1 : 0)
                 .frame(height: 6)
                 .accessibilityHidden(!showsGraceProgress)
                 .accessibilityLabel("Time off neutral posture")
-                .accessibilityValue(Text("\(Int(slouchProgress * 100)) percent of grace period"))
+                .accessibilityValue(Text("\(Int(snapshot.slouchProgress * 100)) percent of grace period"))
         }
         .padding(.horizontal, 4)
         .accessibilityElement(children: .combine)
@@ -57,22 +51,22 @@ struct PostureGaugeView: View {
 
     private var displayedPose: (pitch: Double, roll: Double) {
         PostureGaugeMapping.displayedPose(
-            pitch: pitchDelta,
-            roll: rollDelta,
-            isCalibrated: isCalibrated
+            pitch: snapshot.pitchDeltaDegrees,
+            roll: snapshot.rollDeltaDegrees,
+            isCalibrated: snapshot.isCalibrated
         )
     }
 
     private var displayedYaw: Double {
-        isCalibrated ? yawDelta : 0
+        snapshot.isCalibrated ? snapshot.yawDeltaDegrees : 0
     }
 
     private var showsGraceProgress: Bool {
-        band == .leaning || band == .slouching
+        snapshot.band == .leaning || snapshot.band == .slouching
     }
 
     private var statusColor: Color {
-        switch band {
+        switch snapshot.band {
         case .slouching:
             Color.red
         case .leaning:
@@ -85,11 +79,11 @@ struct PostureGaugeView: View {
     }
 
     private var accessibilityValue: String {
-        if !isCalibrated {
-            return caption
+        if !snapshot.isCalibrated {
+            return snapshot.caption
         }
         var parts = [
-            caption,
+            snapshot.caption,
             "Tilt \(PostureFormatting.signedDegrees(displayedPose.pitch))",
             "Lean \(PostureFormatting.signedDegrees(displayedPose.roll))"
         ]

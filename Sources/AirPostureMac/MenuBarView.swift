@@ -14,14 +14,21 @@ struct MenuBarView: View {
     @State private var visibleScreenHeight: CGFloat = 760
 
     var body: some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: true) {
             content
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(GeometryReader { proxy in
                     Color.clear.preference(key: ConsoleHeightKey.self, value: proxy.size.height)
                 })
         }
+        .scrollDisabled(false)
+        .clipped()
         .frame(width: 360, height: min(contentHeight, visibleScreenHeight))
-        .onPreferenceChange(ConsoleHeightKey.self) { contentHeight = $0 }
+        .onPreferenceChange(ConsoleHeightKey.self) { height in
+            if abs(height - contentHeight) > 0.5 {
+                contentHeight = height
+            }
+        }
         .background(ConsoleScreenReader { visibleScreenHeight = max(200, $0 - 48) })
     }
 
@@ -29,15 +36,7 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 16) {
             header
             PostureGaugeView(
-                pitchDelta: tracker.pitchDeltaDegrees,
-                rollDelta: tracker.rollDeltaDegrees,
-                yawDelta: tracker.yawDeltaDegrees,
-                dominantAxis: tracker.dominantAxis,
-                band: tracker.postureBand,
-                slouchProgress: tracker.slouchProgressClamped,
-                isCalibrated: tracker.isCalibrated && tracker.connectionStatus == .connected,
-                caption: tracker.coachingCaption,
-                isLookingAway: tracker.isLookingAway,
+                readings: tracker.liveReadings,
                 showTurnValue: settings.lookAwayGateEnabled || settings.showHeadTurnEnabled,
                 showHeadTurn: settings.showHeadTurnEnabled
             )

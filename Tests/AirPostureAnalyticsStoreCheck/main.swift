@@ -40,6 +40,61 @@ private extension PostureTrackingManager {
 }
 
 @MainActor
+private func checkLivePoseDoesNotInvalidateTracker() {
+    // Publishing pose or unchanged connection chrome on the tracker must fail:
+    // those notifications rebuild the entire popover scroll document.
+    let suite = "AirPostureLivePoseCheck.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set(true, forKey: "isTrackingEnabled")
+    defaults.set(0.0, forKey: "baselinePitchDegrees")
+    defaults.set(0.0, forKey: "baselineRollDegrees")
+    defaults.set(10.0, forKey: "sensitivityDegrees")
+    let date = Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 9, day: 6, hour: 12))!
+    var uptime = 100.0
+    let tracker = PostureTrackingManager(
+        defaults: defaults,
+        now: { date },
+        monotonic: { uptime },
+        motionManager: nil
+    )
+    let settings = AirPostureSettings(defaults: defaults)
+    tracker.configure(settings: settings)
+
+    var trackerEvents = 0
+    var liveEvents = 0
+    let trackerSub = tracker.objectWillChange.sink { trackerEvents += 1 }
+    let liveSub = tracker.liveReadings.objectWillChange.sink { liveEvents += 1 }
+    defer {
+        trackerSub.cancel()
+        liveSub.cancel()
+    }
+
+    tracker.receiveFixture(FixtureMotion(pitch: -0.08, timestamp: uptime))
+    let trackerAfterConnect = trackerEvents
+    let liveAfterConnect = liveEvents
+    check(liveAfterConnect >= 1, "first valid sample publishes live readings")
+    check(tracker.connectionStatus == .connected, "first valid sample connects")
+    check(tracker.postureBand == .upright, "small nod stays upright at 10° sensitivity")
+
+    uptime += 0.05
+    tracker.receiveFixture(FixtureMotion(pitch: -0.12, timestamp: uptime))
+    uptime += 0.05
+    tracker.receiveFixture(FixtureMotion(pitch: -0.16, timestamp: uptime))
+
+    check(trackerEvents == trackerAfterConnect, "later upright pose samples must not publish PostureTrackingManager")
+    check(liveEvents > liveAfterConnect, "later upright pose samples publish LivePostureReadings")
+    check(tracker.pitchDeltaDegrees != 0, "tracker getters still expose the live tilt")
+
+    let liveBeforeDisable = liveEvents
+    tracker.isTrackingEnabled = false
+    check(trackerEvents > trackerAfterConnect, "coarse chrome still publishes on Tracking toggle")
+    check(tracker.postureBand == .paused, "disabling tracking publishes paused band")
+    check(liveEvents > liveBeforeDisable && tracker.liveReadings.snapshot.band == .paused,
+          "disabling tracking refreshes the live gauge to paused")
+}
+
+@MainActor
 private func checkRejectedMotionRestartsGrace(root: URL, calendar: Calendar) {
     // Removing either rejection-path reset must fail: analytics must never
     // manufacture an episode while the tracker remains in its previous slouch.
@@ -114,6 +169,7 @@ private struct AnalyticsStoreCheck {
         defer { try? FileManager.default.removeItem(at: root) }
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        checkLivePoseDoesNotInvalidateTracker()
         checkRejectedMotionRestartsGrace(root: root, calendar: calendar)
         var now = calendar.date(from: DateComponents(year: 2026, month: 9, day: 6, hour: 12))!
         var uptime = 100.0

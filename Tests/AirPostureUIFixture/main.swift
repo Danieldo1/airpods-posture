@@ -92,9 +92,9 @@ struct FixtureView: View {
                 if page == "Console" {
                     MenuBarView().environmentObject(state.tracker).environmentObject(state.settings).environmentObject(state.store)
                 } else if page == "Reminders" {
-                    ScrollView { ReminderOptionsView(settings: state.settings).padding(16).frame(width: 360) }
+                    ScrollView(.vertical) { ReminderOptionsView(settings: state.settings).padding(16).frame(width: 360) }
                 } else {
-                    ScrollView { PostureAnalyticsView(store: state.store, isExpanded: $expanded).padding(16).frame(width: 360) }
+                    ScrollView(.vertical) { PostureAnalyticsView(store: state.store, isExpanded: $expanded).padding(16).frame(width: 360) }
                 }
             }.frame(width: 360)
         }
