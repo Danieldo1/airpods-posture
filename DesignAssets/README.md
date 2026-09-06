@@ -6,8 +6,13 @@ UPDATED.blend**. `CoolioBust.blend` is the editable, simplified source;
 export. The original file in Downloads is never modified.
 
 Source SHA-256: `826496e4f4721c7e103356021ba45fe457cd4410fdfc483a17f6e2543438aa52`.
-The supplied model's existing ownership/license terms still apply. This
-Coolio derivative is not the CC0 Blender Human Base Mesh used by the previous
+
+The avatar is adapted from [Coolio 2.0 (UPDATED)](https://blendswap.com/blend/27852)
+by [RabidTribble](https://blendswap.com/profile/650880), licensed
+[CC BY-NC-SA](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+AirPosture crops the figure to an upper-body bust, simplifies the rig, and
+exports a USDZ for the menu-bar console. This derivative stays under the
+same license. It is not the CC0 Blender Human Base Mesh used by the previous
 avatar. The older `AirPostureBust.blend` and `build_airposture_bust.py` are
 retained as historical assets, not the current build pipeline.
 

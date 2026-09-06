@@ -1,184 +1,107 @@
 # AirPosture
 
-A macOS menu-bar posture coach. It reads the motion sensors in spatial-audio AirPods and nudges you when your head stays tilted or leaned off your chosen baseline.
+AirPosture is a menu-bar posture coach for Mac. It uses compatible AirPods to notice when your head stays off the Neutral Posture you set, then nudges you with a faint Glow, a sound, and a Sit up straight! banner.
 
-Compatible with **AirPods Pro**, **AirPods Max**, **AirPods 3 / 4**, and other Apple headphones that support spatial audio with dynamic head tracking. Original AirPods and AirPods 2 have no IMU and will stay **Disconnected**.
+There is no account and no Dock icon. Click the AirPosture icon at the top of the screen to open it.
 
-## Requirements
+## What you need
 
-- **macOS 14.0+** — Apple added `CMHeadphoneMotionManager` to the Mac in macOS 14 (Sonoma). It is not available on macOS 13.
-- AirPods (or Beats) with head tracking, in your ears
-- Motion & Fitness permission
-- Notification permission (for the “Sit up straight!” banner)
-- Optional: Focus Status permission (hides the banner while Focus is on)
-- **Swift 6.1+** to build from source. The bundled ColorSelector package requires Swift 6.1.
+- A Mac running macOS 14 Sonoma or later
+- Compatible headphones: AirPods Pro, AirPods Max, AirPods 3 / 4, or other Apple headphones with spatial audio head tracking. Original AirPods and AirPods 2 stay **Disconnected**.
+- Permission for Motion & Fitness
+- Optional: Notifications (for banners) and Focus Status (hides sit-up banners while Focus is on)
 
-## Info.plist keys
+## Install and open
 
-These keys are already in `Resources/Info.plist`. If you recreate the target in Xcode, add them again — **missing `NSMotionUsageDescription` crashes the app** the moment motion updates start. Missing `NSFocusStatusUsageDescription` can abort launch once Focus Status APIs are linked.
-
-```xml
-<key>NSMotionUsageDescription</key>
-<string>AirPosture uses the motion sensors in your AirPods to track head tilt and remind you to sit upright. Motion data never leaves this Mac.</string>
-
-<key>NSFocusStatusUsageDescription</key>
-<string>AirPosture hides sit-up banners while Focus is on. Overlays and sounds still follow your settings.</string>
-
-<key>LSUIElement</key>
-<true/>
-```
-
-| Key | Why it is required |
-| --- | --- |
-| `NSMotionUsageDescription` | Required by Core Motion on macOS. Without it, `startDeviceMotionUpdates` aborts the process. This string appears in the Motion & Fitness permission prompt. |
-| `NSFocusStatusUsageDescription` | Required when using the public Focus Status API (`INFocusStatusCenter`). This string appears if macOS asks for Focus Status. |
-| `LSUIElement` | Hides the Dock icon and Cmd-Tab entry so the app lives only in the menu bar. |
-
-You do **not** need a Bluetooth usage string. Head pose comes from Core Motion, not a raw Bluetooth API.
-
-If you use Xcode’s generated Info.plist instead of this file, set the same values in the target’s Info tab, or as build settings:
-
-```
-INFOPLIST_KEY_NSMotionUsageDescription = AirPosture uses the motion sensors in your AirPods…
-INFOPLIST_KEY_NSFocusStatusUsageDescription = AirPosture hides sit-up banners while Focus is on…
-INFOPLIST_KEY_LSUIElement = YES
-```
-
-Do **not** add `com.apple.developer.headphone-motion` or `com.apple.developer.focus-status` to an ad-hoc signature. Those restricted entitlements can make AMFI kill the app on launch. The usage strings plus the TCC prompts are enough for local use.
-
-## Build & run
-
-This Mac only has Command Line Tools in some setups. Either path works.
-
-### Swift Package (no Xcode.app required)
+From the AirPosture folder in Terminal:
 
 ```bash
-chmod +x build.sh
 make run
 ```
 
-That compiles a release binary, wraps it in `AirPosture.app` (with the Info.plist above), ad-hoc signs it, and opens it.
+That builds AirPosture and opens it.
 
-Install into `/Applications`:
+To put it in Applications and open it from there:
 
 ```bash
 make install
 ```
 
-Always launch the **`.app`**, never the raw `.build/release/AirPosture` binary. The bare executable has no Info.plist, so macOS kills it when it touches motion data.
+Always open the AirPosture app, not a loose program file from a build folder. The app is what macOS needs for Motion & Fitness.
 
-Run the deterministic core and native integration checks with:
+AirPosture lives in the menu bar. Look at the top of the screen — not the Dock.
 
-```bash
-make test
-```
+## First 5 minutes
 
-The native sound-output probe is deliberately separate because it plays all five sounds:
+1. Put on compatible AirPods and connect them to the Mac.
+2. Open AirPosture. Look in the menu bar, not the Dock.
+3. Allow Motion & Fitness when macOS asks. If you dismissed it: System Settings → Privacy & Security → Motion & Fitness.
+4. Click the AirPosture icon in the menu bar.
+5. Sit how you want to hold yourself, then click **Set Neutral Posture**. **Desk** is the default. Switch to **Sofa** and set Neutral Posture again if you want a second baseline.
+6. Leave Tracking on. A faint **Glow** appears as you drift. If you stay off Neutral Posture for a few seconds, AirPosture plays **Pop** and shows a **Sit up straight!** banner.
 
-```bash
-make sound-probe
-```
+Allow Notifications if you want that banner. Glow still works if you skip it.
 
-The checked-in `Vendor/ColorSelector` source is upstream v2.3.1 at commit `d73937d4c68894170001f331ce991ccaeffa73b5`. Its only compatibility change wraps preview-only macro blocks so Command Line Tools without `PreviewsMacros` can compile the package; runtime picker code is unchanged. Provenance and hashes are recorded in `Vendor/ColorSelector/UPSTREAM.json`.
+## Using AirPosture
 
-### Xcode
+### The menu-bar icon
 
-1. Open `AirPostureMac.xcodeproj`
-2. Select the **AirPosture** target
-3. Choose your Team if you want a development signature (ad-hoc `-` also works locally)
-4. Confirm Info contains `NSMotionUsageDescription`, `NSFocusStatusUsageDescription`, and `LSUIElement = YES`
-5. Run (⌘R)
+The icon turns orange while you are off Neutral Posture through the Grace Period, and red once a slouch is sustained. When headphones are missing it shows a gray AirPods symbol, and the badge may say **Disconnected**.
 
-## First-run setup
+### The avatar and coach
 
-1. Put on compatible AirPods and connect them to this Mac.
-2. Launch **AirPosture**. A posture icon appears in the menu bar.
-3. Allow **Motion & Fitness** when macOS asks. If you dismissed it: System Settings → Privacy & Security → Motion & Fitness.
-4. Allow notifications if you want the sit-up banner.
-5. Click the menu-bar icon. Sit the way you want to hold yourself, then **Set Neutral Posture** (⌘K). Desk is the default preset; switch to **Sofa** and calibrate again if you want a second baseline.
-6. Leave tracking on. With the default early cue, a faint click-through **Glow** starts at 70% of the sensitivity ellipse and fades in over 3 seconds. If you remain past the real boundary for the grace period (default 5 seconds), AirPosture:
-   - raises the overlay to its selected maximum
-   - plays **Pop**
-   - posts a “Sit up straight!” banner (skipped while Focus is on *and* Focus Status is allowed)
+The figure in the panel mirrors how you sit. The one-line coach says things like **Upright**, **Waiting for AirPods**, **Lift your chin**, or **Looking aside**.
 
-The early cue is visual only. It does not start grace, mark a slouch, create an episode, change the menu icon, or play/post an alert. Sound and banners still wait for the real boundary plus one grace period, or two grace periods when delayed sound is enabled. Alerts are throttled to once every 45 seconds. Overlays never block clicks. Press **Esc** while a warning overlay is visible to snooze 15 minutes (macOS may ask for Input Monitoring so Esc still reaches the app you are typing in).
+### This week and History
 
-## Using the console
+**This week** shows a short upright / slouch / off-neutral summary. Click it to expand Monday–Sunday bars: green is time within your Sensitivity, orange is the Grace Period countdown, red is a sustained slouch, and gray is older off-neutral time that was not split that way.
 
-The popover is the only window.
+**History** is in that same expanded area. Choose 7, 30, or 90 days (30 by default). Time is counted only while Tracking is on, headphones are Connected, and the active Desk or Sofa preset has a Neutral Posture.
 
-- **Expressive posture avatar** — a lightweight Coolio torso with complete arms and hands mirrors tilt, lean, and optional head turn with smooth, amplified movement. Black eyes and brows blink and shift from a relaxed smile to quiet concern with the current posture status. Brief eyebrow raises and small arm gestures respond to posture changes. Chest and shoulder movement illustrate the headphone attitude; they are not separate body measurements. Subtle breathing preserves the tracked pose.
-- **Coach chip** — a one-line cue plus signed Tilt / Lean values.
-- **This week** — a compact upright/slouch/off-neutral summary stays visible. Expand it for Monday–Sunday stacked bars: green is within sensitivity (including early-cue and look-away-gated time), orange is the grace countdown, red is sustained slouch, and gray is older off-neutral time that predates category splitting. Empty and future dates stay empty. Hover, click, or use the keyboard to select a day and inspect exact durations, percentages, and episodes. Time is monitored only while tracking is enabled, headphones are connected, and the active preset is calibrated.
-- **History** — the expanded area also shows 7, 30, or 90 inclusive local-calendar days, ending today (30 days by default). Daily upright percentages use a fixed 0–100% scale. The dashed trailing trend weights each day by monitored duration over the seven calendar days ending there; its detail shows observed-day and monitored-time coverage. Missing dates break both lines, so gaps never imply continuous measurement. The comparison uses the latest seven days versus the preceding seven only when both contain monitored time.
-- **Desk / Sofa** — two saved neutrals. Switching applies that preset immediately. An uncalibrated preset pauses the gauge and weekly stats until you calibrate it.
-- **Options** (collapsed by default) — click anywhere on the row to open grouped Monitoring, Breaks, Reminders, Appearance, and Pause & feedback controls. These include tracking, sensitivity, grace, head-turn behavior, break reminders, overlay style and strength, sound, icon style, tint, snooze, and the optional sit-up chime.
-- **Breaks** — off by default. When enabled, a countdown appears in the menu bar and at the top of the popover. At zero, AirPosture plays the selected sound and a Walk, Water, or Eyes banner (Mix rotates those three). Snooze and Focus silence that tap; the next interval starts immediately with no backlog. Breaks never draw the slouch overlay and do not change weekly stats.
+### Desk and Sofa
 
-Snooze hides the overlay and mutes sound and banners. Tracking and the week counters keep running. **Resume** clears snooze. Snooze is in-memory only; quitting AirPosture ends it.
+Desk and Sofa keep two Neutral Postures. Switching applies that preset right away. If you have not set Neutral Posture for the one you picked, the figure and This week wait until you do.
 
-## Customization
+### Options
 
-| Control | Default | Notes |
-| --- | --- | --- |
-| Break reminders | Off | Repeating interval 5–120 minutes (default 45). Walk / Water / Eyes / Mix. |
-| Warning style | Glow | Also Border, Dim, Blur (public system blur only), or Off. Reduce Transparency turns Glow/Blur into Dim. |
-| Early visual cue | On | Start point 10–100% of the existing sensitivity ellipse in 5% steps; default 70%. Turning it off keeps the overlay hidden until grace expires and does not change scoring. |
-| Fade-in | 3 seconds | 0.5–10 seconds in 0.5-second steps. Applies to the selected overlay response. |
-| Max strength | 70% (Glow/Border/Dim), 5% (Blur) | 5–100% in 5% steps. Stored separately for every visible style; Reset restores that style's default and Warm color. |
-| Overlay color | Warm | Warm / Cool / Alert presets plus a custom picker rendered by ColorSelector. Custom colors are stored as validated opaque sRGB; strength controls opacity separately. Each visible style remembers its own color. |
-| Sound pack | Pop | Pop, Tink, Purr, Bottle, Morse. Volume 10–80%. Preview uses the selected pack and volume even while paused or snoozed, without changing analytics, banners, or warning cooldown. |
-| Icon style | Posture figure | Also Horizon cross and Minimal dot. Orange while you are off-neutral through grace; red once a slouch is sustained. |
-| Ignore slouch when I turn | On | Pauses tilt/lean scoring past the turn-away angle. Yaw is session-relative only. |
-| Turn-away angle | 35° | 20–60°. Only used when the look-away gate is on. |
-| Show head turn | On | Rotates the bust left/right. Does not change scoring. |
-| Sit-up chime | Off | A softer tick when you return upright. |
+Click **Options** to open Monitoring, Breaks, Reminders, Appearance, and Pause & feedback.
 
-Existing appearance preferences migrate once: the prior global strength initializes Glow, Border, and Dim (or 70% when absent), while Blur starts at 5%; the prior Warm/Cool/Alert tint initializes each visible style. Once a style has its own values, later launches do not overwrite them.
+- **Monitoring** — Tracking is on by default. Sensitivity is how far you can drift. Grace Period is how long you can stay off Neutral Posture before a nudge. **Ignore slouch when I turn** is on by default, so looking aside does not count as a slouch. **Show head turn** rotates the figure; it does not change when AirPosture counts a slouch.
+- **Breaks** — Break reminders stay off until you turn them on.
+- **Reminders** — Warning style defaults to **Glow**. Early visual cue is on. Sound defaults to **Pop**. You can change fade-in, max strength, color, and volume here.
+- **Appearance** — Icon style defaults to Posture figure. You can also pick Horizon cross or Minimal dot.
+- **Pause & feedback** — Snooze, plus Sit-up chime (off by default).
 
-## How detection works
+### Break reminders
 
-1. `CMHeadphoneMotionManager` streams `CMDeviceMotion` from the AirPods IMU.
-2. **Pitch (tilt)**, **roll (lean)**, and **yaw (turn)** are validated, converted to degrees, and low-pass filtered (α = 0.4).
-3. **Set Neutral Posture** stores pitch and roll for the active Desk or Sofa preset, and zeros **this session’s** heading (yaw is not persisted across launches or reconnects).
-4. Live deltas: tilt = pitch − baseline (negative = chin down); lean = roll − baseline (either side); turn = wrap-aware yaw − session zero.
-5. Off-neutral is scored as an **ellipse**: 10° of forward tilt *or* ~5° of side lean (lean is twice as sensitive). Combined motion can also cross the line even if neither axis does alone. **Yaw is not in the ellipse.**
-6. With **Ignore slouch when I turn** on (default), if `|turn|` reaches the turn-away angle (default 35°), tilt/lean scoring pauses — overlay, banner, grace, and off-neutral week time stay quiet while you look aside. Monitored time still counts.
-7. With the early cue on, the overlay starts at the configured fraction of the same ellipse and reaches 25% of its chosen maximum at the real boundary. Through grace it rises toward the maximum; the sound, banner, red menu state, and episode still begin only after grace. With the cue off, the overlay also waits until after grace. Returning toward neutral fades it away.
-8. The coach chip highlights the **dominant axis**, with copy like “Lift your chin” / “Recenter”, or **Looking aside** while the turn gate is active. **Show head turn** rotates the bust on Y without changing scoring.
+Break reminders are off until you turn them on. When they are on, a countdown appears in the menu bar and at the top of the panel. At zero, AirPosture plays your sound and one of these banners: **Time for a walk**, **Drink some water**, or **Rest your eyes**. Mix rotates those three — Mix is a setting, not a banner title.
 
-## Project layout
+Snooze and Focus skip that reminder. The next interval starts right away. Breaks never draw the slouch Glow and do not change This week.
 
-```
-Sources/AirPostureMac/
-  AirPostureMacApp.swift          App lifecycle + MenuBarExtra
-  PostureTrackingManager.swift    Core Motion, Desk/Sofa calibration, slouch timer
-  AirPostureSettings.swift        Overlay, sound, icon, and snooze preferences
-  WarningOverlayManager.swift     Per-display click-through warning panels
-  WeeklyAnalyticsStore.swift      Local Monday–Sunday week counters
-  PostureAnalyticsView.swift      Weekly stacks, history chart, and details
-  ReminderOptionsView.swift       Early cue, appearance, and sound controls
-  SoundPlayback.swift             Selected-sound playback and fallback lifecycle
-  AlertService.swift              Preview/warning policy and banners
-  MenuBarView.swift               Menu-bar console
-  PostureGaugeView.swift          Full-size bust stage, coach chip, and grace bar
-  InstrumentBustView.swift        SceneKit frame loop and tracking input bridge
-  BustSceneRig.swift              Cached rig controls, materials, and lighting
-  BustDebugView.swift             Opt-in Debug-only animation tuning
-  Resources/AirPostureBust.usdz   Optimized Coolio torso and posture/facial rig
-  MenuBarIcon.swift               Status symbol families
-Resources/Info.plist              Motion, Focus Status, and LSUIElement keys
-Sources/AirPostureCore/
-  PostureGaugeMapping.swift       Pure pose mapping + yaw wrap/gate helpers
-  WarningIntensity.swift          Pure cue target and time-based envelope
-  PostureAnalytics.swift          Versioned days, ranges, trends, and accumulation
-DesignAssets/
-  CoolioBust.blend                Editable Coolio derivative with named controls
-  CoolioBust-preview.png          Source-rendered material preview
-Tools/Blender/
-  build_coolio_bust.py             Rebuilds the Coolio derivative, preview, and USDZ
-```
+### Snooze and Esc
 
-Privacy: all processing is local. No network calls, no accounts. Analytics live in `~/Library/Application Support/AirPosture/weekly-analytics.json`. The app keeps exactly today plus the preceding 89 local-calendar dates. Version 1 totals migrate without loss to version 2; older off-neutral duration remains labeled “Earlier off-neutral, unsplit” because countdown and sustained portions cannot be reconstructed. New records preserve fractional monitored, off-neutral, countdown, and sustained durations plus episode counts. Invalid or unsupported future documents are rejected instead of silently overwritten.
+Snooze hides Glow and mutes sound and banners. Tracking and This week keep running. Click **Resume** to clear snooze. Snooze is forgotten if you quit AirPosture.
 
-Sound playback tries the selected system AIFF first, then the same named `NSSound` fallback; it never substitutes Pop for a failed selection. The player remains alive through completion, a second preview stops the first, and preparation/start/decode failures appear inline beside the reminder controls until a later playback succeeds.
+Press **Esc** while a warning Glow (or other warning style) is on screen to snooze 15 minutes. macOS may ask for Input Monitoring so Esc still works while you type in another app.
+
+### Quit
+
+Click **Quit AirPosture** at the bottom of the panel.
+
+## If something’s wrong
+
+1. **Disconnected or Waiting for AirPods.** Put on compatible headphones and connect them to the Mac. Original AirPods and AirPods 2 stay Disconnected. The badge may say **Disconnected** or **Searching**; the coach says **Waiting for AirPods** until motion arrives.
+2. **Set Neutral Posture is dimmed.** Turn Tracking on and wait until the badge says Connected. The button stays dim while headphones are missing or Tracking is off.
+3. **Motion access is off.** Enable it in System Settings → Privacy & Security → Motion & Fitness. AirPosture shows that same path in the panel when access is denied.
+4. **No Sit up straight! banner.** Allow Notifications. If Focus is on and you allowed Focus Status, AirPosture hides sit-up banners (Glow and sound still follow your settings). Snooze also mutes banners. The banner waits until you stay past Neutral Posture through the Grace Period — or twice that wait if **Wait for 2× grace before sound** is on.
+5. **Glow feels late or too strong.** Shorten Grace Period or Fade-in if it feels late. Turn Early visual cue off if you only want Glow after the Grace Period. Lower Max strength, or choose Dim or Off, if it feels too strong. macOS Reduce Transparency turns Glow and Blur into Dim.
+
+## Privacy
+
+AirPosture works only on this Mac. There is no account and no network.
+
+## Building from source
+
+See [docs/developer.md](docs/developer.md).
+
+Avatar adapted from Coolio 2.0 by [RabidTribble](https://blendswap.com/blend/27852) ([CC BY-NC-SA](https://creativecommons.org/licenses/by-nc-sa/4.0/)).

@@ -381,13 +381,20 @@ struct MenuBarView: View {
     }
 
     private var footer: some View {
-        HStack {
-            Text("v1.0.0")
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("v1.0.0")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                Button("Quit AirPosture", action: handleQuit)
+                    .keyboardShortcut("q")
+            }
+            Text("Coolio by RabidTribble")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
-            Spacer()
-            Button("Quit AirPosture", action: handleQuit)
-                .keyboardShortcut("q")
+                .help("Avatar adapted from Coolio 2.0 by RabidTribble, CC BY-NC-SA.")
+                .accessibilityLabel("Avatar adapted from Coolio by RabidTribble, Creative Commons Attribution-NonCommercial-ShareAlike")
         }
     }
 
