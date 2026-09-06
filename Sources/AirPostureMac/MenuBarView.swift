@@ -13,6 +13,7 @@ struct MenuBarView: View {
 
     @State private var optionsExpanded = false
     @State private var summaryExpanded = false
+    @State private var walkthroughStep = WalkthroughStep.welcome
 
     @State private var visibleScreenHeight: CGFloat = 760
 
@@ -25,9 +26,23 @@ struct MenuBarView: View {
                 .padding(.horizontal, 16)
 
             ScrollView(.vertical, showsIndicators: false) {
-                content
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if settings.isWalkthroughPresented {
+                    WalkthroughView(
+                        step: $walkthroughStep,
+                        connectionTitle: tracker.connectionStatus.title,
+                        authorizationDenied: tracker.authorizationDenied,
+                        canCalibrate: tracker.canCalibrate,
+                        didJustCalibrate: tracker.didJustCalibrate,
+                        onCalibrate: handleCalibrate,
+                        onSkip: handleFinishWalkthrough,
+                        onFinish: handleFinishWalkthrough
+                    )
                     .background(ConsoleScrollBehavior())
+                } else {
+                    content
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(ConsoleScrollBehavior())
+                }
             }
             .clipped()
 
@@ -386,6 +401,10 @@ struct MenuBarView: View {
                 Text("v1.0.0")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+                if !settings.isWalkthroughPresented {
+                    Button("How it works", action: handleStartWalkthrough)
+                        .font(.caption)
+                }
                 Spacer()
                 Button("Quit AirPosture", action: handleQuit)
                     .keyboardShortcut("q")
@@ -463,6 +482,15 @@ struct MenuBarView: View {
 
     private func handleCalibrate() {
         tracker.calibrate()
+    }
+
+    private func handleStartWalkthrough() {
+        walkthroughStep = .welcome
+        settings.startWalkthrough()
+    }
+
+    private func handleFinishWalkthrough() {
+        settings.completeWalkthrough()
     }
 
     private func handleSnooze15() {

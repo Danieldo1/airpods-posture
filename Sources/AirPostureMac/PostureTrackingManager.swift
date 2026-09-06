@@ -107,6 +107,10 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         baselinePitchDegrees != nil && baselineRollDegrees != nil
     }
 
+    var hasAnyCalibration: Bool {
+        deskPitchDegrees != nil || sofaPitchDegrees != nil
+    }
+
     var isAnalyticsEligible: Bool {
         isTrackingEnabled && connectionStatus == .connected && isCalibrated
     }
@@ -139,6 +143,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         if postureBand != nextBand {
             postureBand = nextBand
         }
+        let gaugeCalibrated = isCalibrated && connectionStatus == .connected
         liveReadings.replace(
             LivePostureSnapshot(
                 pitchDeltaDegrees: pitchDeltaDegrees,
@@ -147,11 +152,30 @@ final class PostureTrackingManager: NSObject, ObservableObject {
                 dominantAxis: dominantAxis,
                 band: nextBand,
                 slouchProgress: slouchProgressClamped,
-                isCalibrated: isCalibrated && connectionStatus == .connected,
+                isCalibrated: gaugeCalibrated,
                 caption: coachingCaption,
                 isLookingAway: isLookingAway
             )
         )
+        // #region agent log
+        if debugLastGaugeCalibrated != gaugeCalibrated {
+            debugLastGaugeCalibrated = gaugeCalibrated
+            agentLog(
+                hypothesisId: "E",
+                location: "PostureTrackingManager.syncConsolePublications",
+                message: "gauge isCalibrated flipped",
+                data: [
+                    "gaugeCalibrated": gaugeCalibrated,
+                    "hasBaselines": isCalibrated,
+                    "connection": connectionStatus.rawValue,
+                    "band": String(describing: nextBand),
+                    "activePitch": debugOpt(baselinePitchDegrees),
+                    "activeRoll": debugOpt(baselineRollDegrees),
+                    "preset": activePreset.rawValue
+                ]
+            )
+        }
+        // #endregion
     }
 
     var coachingCaption: String {
@@ -199,6 +223,8 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     private var hasReceivedMotionSample = false
     private var isSystemSleeping = false
     private var motionFreshAfterUptime: TimeInterval = 0
+    private var needsMotionSettle = true
+    private var motionSettleUntilUptime: TimeInterval = 0
     private var sleepObservers: [NSObjectProtocol] = []
     private var lastSuccessfulMotionTime: Date?
     private var healthCheckTimer: Timer?
@@ -207,6 +233,12 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     private var deskRollDegrees: Double? = nil
     private var sofaPitchDegrees: Double? = nil
     private var sofaRollDegrees: Double? = nil
+    // #region agent log
+    private var debugAcceptLogsRemaining = 0
+    private var debugRejectCount = 0
+    private var debugSettleRejectCount = 0
+    private var debugLastGaugeCalibrated: Bool?
+    // #endregion
 
     private enum SettingsKey {
         static let isTrackingEnabled = "isTrackingEnabled"
@@ -232,6 +264,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         static let healthCheckInterval: TimeInterval = 2
         static let reconnectSilence: TimeInterval = 5
         static let disconnectSilence: TimeInterval = 10
+        static let connectSettleSeconds: TimeInterval = 0.45
     }
 
     override convenience init() {
@@ -291,6 +324,24 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         baselineRollDegrees = preset == .desk ? deskRollDegrees : sofaRollDegrees
 
         super.init()
+        // #region agent log
+        debugAcceptLogsRemaining = 3
+        agentLog(
+            hypothesisId: "B",
+            location: "PostureTrackingManager.init",
+            message: "loaded persisted baselines",
+            data: [
+                "preset": preset.rawValue,
+                "deskPitch": debugOpt(deskPitchDegrees),
+                "deskRoll": debugOpt(deskRollDegrees),
+                "sofaPitch": debugOpt(sofaPitchDegrees),
+                "sofaRoll": debugOpt(sofaRollDegrees),
+                "activePitch": debugOpt(baselinePitchDegrees),
+                "activeRoll": debugOpt(baselineRollDegrees),
+                "isCalibrated": isCalibrated
+            ]
+        )
+        // #endregion
         defer { syncConsolePublications() }
         guard let motionManager else { return }
         configureSleepObservers()
@@ -318,6 +369,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
                     self.motionFreshAfterUptime = self.monotonic()
                     self.hasReceivedMotionSample = false
                     self.lastSuccessfulMotionTime = nil
+                    self.armMotionSettle()
                     self.setConnectionStatus(self.isTrackingEnabled ? .searching : .disconnected)
                     self.resetSlouchState()
                     self.publishAnalytics(state: .inactive)
@@ -342,13 +394,51 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     }
 
     func calibrate() {
-        guard canCalibrate else { return }
+        guard canCalibrate else {
+            // #region agent log
+            agentLog(
+                hypothesisId: "B",
+                location: "PostureTrackingManager.calibrate",
+                message: "calibrate blocked",
+                data: [
+                    "tracking": isTrackingEnabled,
+                    "connection": connectionStatus.rawValue,
+                    "currentPitch": currentPitchDegrees,
+                    "currentRoll": currentRollDegrees
+                ]
+            )
+            // #endregion
+            return
+        }
         defer { syncConsolePublications() }
         persistBaseline(pitch: currentPitchDegrees, roll: currentRollDegrees)
         resetLiveDeviation()
         rezeroSessionYaw()
         resetSlouchState()
         motionFreshAfterUptime = monotonic()
+        // #region agent log
+        debugAcceptLogsRemaining = 6
+        debugRejectCount = 0
+        agentLog(
+            hypothesisId: "D",
+            location: "PostureTrackingManager.calibrate",
+            message: "neutral posture saved and live axes zeroed",
+            data: [
+                "preset": activePreset.rawValue,
+                "savedPitch": currentPitchDegrees,
+                "savedRoll": currentRollDegrees,
+                "sessionYaw": debugOpt(sessionYawDegrees),
+                "freshAfter": motionFreshAfterUptime,
+                "pitchDelta": pitchDeltaDegrees,
+                "rollDelta": rollDeltaDegrees,
+                "yawDelta": yawDeltaDegrees,
+                "defaultsPitch": debugStored(SettingsKey.baselinePitchDegrees),
+                "defaultsRoll": debugStored(SettingsKey.baselineRollDegrees),
+                "sofaPitch": debugStored(SettingsKey.sofaBaselinePitchDegrees),
+                "sofaRoll": debugStored(SettingsKey.sofaBaselineRollDegrees)
+            ]
+        )
+        // #endregion
         publishAnalytics(state: .inactive)
         didJustCalibrate = true
 
@@ -365,7 +455,22 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     }
 
     private func setConnectionStatus(_ status: ConnectionStatus) {
-        if connectionStatus != status { connectionStatus = status }
+        if connectionStatus != status {
+            // #region agent log
+            agentLog(
+                hypothesisId: "C",
+                location: "PostureTrackingManager.setConnectionStatus",
+                message: "connection changed",
+                data: [
+                    "from": connectionStatus.rawValue,
+                    "to": status.rawValue,
+                    "hasBaselines": isCalibrated,
+                    "sessionYaw": debugOpt(sessionYawDegrees)
+                ]
+            )
+            // #endregion
+            connectionStatus = status
+        }
     }
 
     private func setLastErrorMessage(_ message: String?) {
@@ -440,7 +545,28 @@ final class PostureTrackingManager: NSObject, ObservableObject {
             publishAnalytics(state: .inactive)
             return
         }
-        guard motion.timestamp > motionFreshAfterUptime else { return }
+        guard motion.timestamp > motionFreshAfterUptime else {
+            // #region agent log
+            debugRejectCount += 1
+            if debugRejectCount <= 5 || debugRejectCount % 40 == 0 {
+                agentLog(
+                    hypothesisId: "A",
+                    location: "PostureTrackingManager.handleMotion",
+                    message: "sample rejected by freshness gate",
+                    data: [
+                        "motionTs": motion.timestamp,
+                        "freshAfter": motionFreshAfterUptime,
+                        "rejectCount": debugRejectCount,
+                        "deltaTs": motion.timestamp - motionFreshAfterUptime,
+                        "pitchDelta": pitchDeltaDegrees,
+                        "rollDelta": rollDeltaDegrees,
+                        "yawDelta": yawDeltaDegrees
+                    ]
+                )
+            }
+            // #endregion
+            return
+        }
 
         let pitch = motion.attitude.pitch
         let roll = motion.attitude.roll
@@ -448,6 +574,9 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         guard Self.isValidAttitude(pitch: pitch, roll: roll, yaw: yaw) else {
             resetSlouchState()
             publishAnalytics(state: .inactive)
+            return
+        }
+        if motionManager != nil, discardUnsettledMotion() {
             return
         }
         // Observers see a complete result, including unchanged zones after wake/reconnect.
@@ -485,6 +614,25 @@ final class PostureTrackingManager: NSObject, ObservableObject {
             dominantAxis = .tilt
             isLookingAway = false
             resetSlouchState()
+            // #region agent log
+            if debugAcceptLogsRemaining > 0 {
+                debugAcceptLogsRemaining -= 1
+                agentLog(
+                    hypothesisId: "B",
+                    location: "PostureTrackingManager.handleMotion",
+                    message: "accepted sample but active baselines missing",
+                    data: [
+                        "preset": activePreset.rawValue,
+                        "deskPitch": debugOpt(deskPitchDegrees),
+                        "deskRoll": debugOpt(deskRollDegrees),
+                        "sofaPitch": debugOpt(sofaPitchDegrees),
+                        "sofaRoll": debugOpt(sofaRollDegrees),
+                        "activePitch": debugOpt(baselinePitchDegrees),
+                        "activeRoll": debugOpt(baselineRollDegrees)
+                    ]
+                )
+            }
+            // #endregion
             return
         }
 
@@ -515,6 +663,33 @@ final class PostureTrackingManager: NSObject, ObservableObject {
 
         let ellipsePast = combined >= 1
         evaluatePosture(isPastThreshold: ellipsePast && !gated)
+        // #region agent log
+        if debugAcceptLogsRemaining > 0 {
+            debugAcceptLogsRemaining -= 1
+            agentLog(
+                hypothesisId: "D",
+                location: "PostureTrackingManager.handleMotion",
+                message: "accepted sample after calibrate",
+                data: [
+                    "remaining": debugAcceptLogsRemaining,
+                    "motionTs": motion.timestamp,
+                    "freshAfter": motionFreshAfterUptime,
+                    "currentPitch": currentPitchDegrees,
+                    "currentRoll": currentRollDegrees,
+                    "currentYaw": currentYawDegrees,
+                    "baselinePitch": debugOpt(baselinePitchDegrees),
+                    "baselineRoll": debugOpt(baselineRollDegrees),
+                    "pitchDelta": tiltDelta,
+                    "rollDelta": leanDelta,
+                    "yawDelta": yawDelta,
+                    "sessionYaw": debugOpt(sessionYawDegrees),
+                    "connection": connectionStatus.rawValue,
+                    "isCalibrated": isCalibrated,
+                    "lookingAway": gated
+                ]
+            )
+        }
+        // #endregion
     }
 
     private func evaluatePosture(isPastThreshold pastThreshold: Bool) {
@@ -558,16 +733,92 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     }
 
     private func rezeroSessionYaw() {
+        // #region agent log
+        agentLog(
+            hypothesisId: "C",
+            location: "PostureTrackingManager.rezeroSessionYaw",
+            message: "session yaw rezeroed",
+            data: [
+                "from": debugOpt(sessionYawDegrees),
+                "to": currentYawDegrees,
+                "currentYaw": currentYawDegrees
+            ]
+        )
+        // #endregion
         sessionYawDegrees = currentYawDegrees
         yawDeltaDegrees = 0
         isLookingAway = false
     }
 
     private func clearSessionYaw() {
+        // #region agent log
+        if sessionYawDegrees != nil || smoothedYawDegrees != nil {
+            agentLog(
+                hypothesisId: "C",
+                location: "PostureTrackingManager.clearSessionYaw",
+                message: "session yaw cleared",
+                data: [
+                    "hadSessionYaw": sessionYawDegrees != nil,
+                    "sessionYaw": debugOpt(sessionYawDegrees),
+                    "connection": connectionStatus.rawValue
+                ]
+            )
+        }
+        // #endregion
         sessionYawDegrees = nil
         smoothedYawDegrees = nil
         yawDeltaDegrees = 0
         isLookingAway = false
+        armMotionSettle()
+    }
+
+    private func armMotionSettle() {
+        needsMotionSettle = true
+        motionSettleUntilUptime = 0
+        smoothedPitchDegrees = nil
+        smoothedRollDegrees = nil
+        debugSettleRejectCount = 0
+    }
+
+    private func discardUnsettledMotion() -> Bool {
+        if needsMotionSettle {
+            needsMotionSettle = false
+            motionSettleUntilUptime = monotonic() + Motion.connectSettleSeconds
+            // #region agent log
+            agentLog(
+                hypothesisId: "F",
+                location: "PostureTrackingManager.discardUnsettledMotion",
+                message: "started connect settle window",
+                data: [
+                    "until": motionSettleUntilUptime,
+                    "seconds": Motion.connectSettleSeconds,
+                    "baselinePitch": debugOpt(baselinePitchDegrees),
+                    "baselineRoll": debugOpt(baselineRollDegrees)
+                ],
+                runId: "post-fix"
+            )
+            // #endregion
+            return true
+        }
+        guard monotonic() < motionSettleUntilUptime else { return false }
+        debugSettleRejectCount += 1
+        // #region agent log
+        if debugSettleRejectCount <= 3 || debugSettleRejectCount % 15 == 0 {
+            agentLog(
+                hypothesisId: "F",
+                location: "PostureTrackingManager.discardUnsettledMotion",
+                message: "discarded unsettled connect sample",
+                data: [
+                    "rejectCount": debugSettleRejectCount,
+                    "remaining": motionSettleUntilUptime - monotonic(),
+                    "baselinePitch": debugOpt(baselinePitchDegrees),
+                    "baselineRoll": debugOpt(baselineRollDegrees)
+                ],
+                runId: "post-fix"
+            )
+        }
+        // #endregion
+        return true
     }
 
     private func persistBaseline(pitch: Double, roll: Double) {
@@ -585,6 +836,20 @@ final class PostureTrackingManager: NSObject, ObservableObject {
             defaults.set(pitch, forKey: SettingsKey.sofaBaselinePitchDegrees)
             defaults.set(roll, forKey: SettingsKey.sofaBaselineRollDegrees)
         }
+        // #region agent log
+        agentLog(
+            hypothesisId: "B",
+            location: "PostureTrackingManager.persistBaseline",
+            message: "wrote preset baselines",
+            data: [
+                "preset": activePreset.rawValue,
+                "pitch": pitch,
+                "roll": roll,
+                "readPitch": debugStored(activePreset == .desk ? SettingsKey.baselinePitchDegrees : SettingsKey.sofaBaselinePitchDegrees),
+                "readRoll": debugStored(activePreset == .desk ? SettingsKey.baselineRollDegrees : SettingsKey.sofaBaselineRollDegrees)
+            ]
+        )
+        // #endregion
     }
 
     private func applyActivePresetBaselines(resetSlouch: Bool) {
@@ -602,6 +867,25 @@ final class PostureTrackingManager: NSObject, ObservableObject {
             resetSlouchState()
         }
         motionFreshAfterUptime = monotonic()
+        // #region agent log
+        debugAcceptLogsRemaining = max(debugAcceptLogsRemaining, 3)
+        agentLog(
+            hypothesisId: "B",
+            location: "PostureTrackingManager.applyActivePresetBaselines",
+            message: "applied preset baselines and zeroed live deltas",
+            data: [
+                "preset": activePreset.rawValue,
+                "activePitch": debugOpt(baselinePitchDegrees),
+                "activeRoll": debugOpt(baselineRollDegrees),
+                "deskPitch": debugOpt(deskPitchDegrees),
+                "deskRoll": debugOpt(deskRollDegrees),
+                "sofaPitch": debugOpt(sofaPitchDegrees),
+                "sofaRoll": debugOpt(sofaRollDegrees),
+                "isCalibrated": isCalibrated,
+                "freshAfter": motionFreshAfterUptime
+            ]
+        )
+        // #endregion
         publishAnalytics(state: .inactive)
     }
 
@@ -615,6 +899,18 @@ final class PostureTrackingManager: NSObject, ObservableObject {
 
     private func migrateLegacyPitchOnlyBaselineIfNeeded() {
         guard baselinePitchDegrees != nil, baselineRollDegrees == nil else { return }
+        // #region agent log
+        agentLog(
+            hypothesisId: "B",
+            location: "PostureTrackingManager.migrateLegacyPitchOnlyBaselineIfNeeded",
+            message: "legacy pitch-only baseline filled with live roll",
+            data: [
+                "pitch": debugOpt(baselinePitchDegrees),
+                "liveRoll": currentRollDegrees,
+                "preset": activePreset.rawValue
+            ]
+        )
+        // #endregion
         persistBaseline(pitch: baselinePitchDegrees ?? currentPitchDegrees, roll: currentRollDegrees)
     }
 
@@ -689,6 +985,56 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         if value == 0 { return fallback }
         return Swift.min(Swift.max(value, min), max)
     }
+
+    // #region agent log
+    private func debugOpt(_ value: Double?) -> Any {
+        value ?? NSNull()
+    }
+
+    private func debugStored(_ key: String) -> Any {
+        defaults.object(forKey: key) == nil ? NSNull() : defaults.double(forKey: key)
+    }
+
+    private func agentLog(hypothesisId: String, location: String, message: String, data: [String: Any] = [:], runId: String = "pre-fix") {
+        // Test fixtures pass motionManager: nil; only the running app is useful.
+        guard motionManager != nil else { return }
+        var payload: [String: Any] = [
+            "sessionId": "a9a77c",
+            "runId": runId,
+            "hypothesisId": hypothesisId,
+            "location": location,
+            "message": message,
+            "data": data,
+            "timestamp": Date().timeIntervalSince1970 * 1000,
+            "source": "live-app"
+        ]
+        payload["data"] = data
+        guard JSONSerialization.isValidJSONObject(payload),
+              let encoded = try? JSONSerialization.data(withJSONObject: payload),
+              let line = String(data: encoded, encoding: .utf8) else { return }
+        let url = URL(fileURLWithPath: "/Users/Daniel_1/Desktop/mac-posture/.cursor/debug-a9a77c.log")
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if !FileManager.default.fileExists(atPath: url.path) {
+                FileManager.default.createFile(atPath: url.path, contents: nil)
+            }
+            let handle = try FileHandle(forWritingTo: url)
+            defer { try? handle.close() }
+            handle.seekToEndOfFile()
+            handle.write(Data((line + "\n").utf8))
+        } catch {
+            NSLog("AirPosture debug log write failed: %@", error.localizedDescription)
+        }
+        if let ingest = URL(string: "http://127.0.0.1:7531/ingest/71247f0d-c497-451d-982a-aafb17cb075c") {
+            var request = URLRequest(url: ingest)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("a9a77c", forHTTPHeaderField: "X-Debug-Session-Id")
+            request.httpBody = encoded
+            URLSession.shared.dataTask(with: request).resume()
+        }
+    }
+    // #endregion
 }
 
 extension PostureTrackingManager: CMHeadphoneMotionManagerDelegate {

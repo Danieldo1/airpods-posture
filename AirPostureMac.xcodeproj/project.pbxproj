@@ -32,6 +32,8 @@
 		A10000000000000000000028 /* BustDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000028 /* BustDebugView.swift */; };
 		A10000000000000000000031 /* BreakReminder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000031 /* BreakReminder.swift */; };
 		A10000000000000000000032 /* BreakReminderClock.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000032 /* BreakReminderClock.swift */; };
+		A10000000000000000000033 /* Walkthrough.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000033 /* Walkthrough.swift */; };
+		A10000000000000000000034 /* WalkthroughView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000034 /* WalkthroughView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -62,6 +64,8 @@
 		A20000000000000000000028 /* BustDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BustDebugView.swift; sourceTree = "<group>"; };
 		A20000000000000000000031 /* BreakReminder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../AirPostureCore/BreakReminder.swift; sourceTree = "<group>"; };
 		A20000000000000000000032 /* BreakReminderClock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreakReminderClock.swift; sourceTree = "<group>"; };
+		A20000000000000000000033 /* Walkthrough.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../AirPostureCore/Walkthrough.swift; sourceTree = "<group>"; };
+		A20000000000000000000034 /* WalkthroughView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -119,6 +123,8 @@
 				A20000000000000000000021 /* PostureAnalytics.swift */,
 				A20000000000000000000031 /* BreakReminder.swift */,
 				A20000000000000000000032 /* BreakReminderClock.swift */,
+				A20000000000000000000033 /* Walkthrough.swift */,
+				A20000000000000000000034 /* WalkthroughView.swift */,
 				A20000000000000000000020 /* WarningIntensity.swift */,
 			);
 			path = AirPostureMac;
@@ -229,6 +235,8 @@
 				A10000000000000000000021 /* PostureAnalytics.swift in Sources */,
 				A10000000000000000000031 /* BreakReminder.swift in Sources */,
 				A10000000000000000000032 /* BreakReminderClock.swift in Sources */,
+				A10000000000000000000033 /* Walkthrough.swift in Sources */,
+				A10000000000000000000034 /* WalkthroughView.swift in Sources */,
 				A10000000000000000000020 /* WarningIntensity.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

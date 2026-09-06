@@ -221,6 +221,59 @@ private func checkBreakReminderDefaultsAndClamp() {
     }
 }
 
+@MainActor
+private func checkWalkthroughPersistenceAndMigrate() {
+    withDefaults { defaults in
+        let settings = AirPostureSettings(defaults: defaults)
+        expectEqual(settings.hasCompletedWalkthrough, false, "walkthrough defaults incomplete")
+        expectEqual(settings.isWalkthroughPresented, false, "presentation is memory-only default")
+        expectEqual(defaults.object(forKey: "hasCompletedWalkthrough") == nil, true, "completion key is not registered")
+
+        settings.migrateWalkthroughIfNeeded(hasAnyCalibration: false)
+        expectEqual(settings.hasCompletedWalkthrough, false, "new user is not migrated")
+
+        settings.migrateWalkthroughIfNeeded(hasAnyCalibration: true)
+        expectEqual(settings.hasCompletedWalkthrough, true, "calibrated user migrates")
+        expectEqual(defaults.bool(forKey: "hasCompletedWalkthrough"), true, "migrate writes the key")
+    }
+
+    withDefaults { defaults in
+        defaults.set(false, forKey: "hasCompletedWalkthrough")
+        let settings = AirPostureSettings(defaults: defaults)
+        settings.migrateWalkthroughIfNeeded(hasAnyCalibration: true)
+        expectEqual(settings.hasCompletedWalkthrough, false, "explicit false is not overwritten")
+    }
+
+    withDefaults { defaults in
+        defaults.set(true, forKey: "hasCompletedWalkthrough")
+        let settings = AirPostureSettings(defaults: defaults)
+        settings.migrateWalkthroughIfNeeded(hasAnyCalibration: true)
+        expectEqual(settings.hasCompletedWalkthrough, true, "explicit true is unchanged")
+        expectEqual(defaults.bool(forKey: "hasCompletedWalkthrough"), true, "explicit true remains persisted")
+    }
+
+    withDefaults { defaults in
+        let settings = AirPostureSettings(defaults: defaults)
+        settings.startWalkthrough()
+        expectEqual(settings.isWalkthroughPresented, true, "start presents")
+        expectEqual(settings.hasCompletedWalkthrough, false, "start does not complete")
+        expectEqual(defaults.object(forKey: "hasCompletedWalkthrough") == nil, true, "start does not write the key")
+
+        settings.completeWalkthrough()
+        expectEqual(settings.hasCompletedWalkthrough, true, "complete marks done")
+        expectEqual(settings.isWalkthroughPresented, false, "complete dismisses")
+
+        settings.startWalkthrough()
+        expectEqual(settings.isWalkthroughPresented, true, "completed user can replay")
+        expectEqual(settings.hasCompletedWalkthrough, true, "completed replay preserves completion")
+        expectEqual(defaults.bool(forKey: "hasCompletedWalkthrough"), true, "completed replay preserves completion key")
+
+        let reloaded = AirPostureSettings(defaults: defaults)
+        expectEqual(reloaded.hasCompletedWalkthrough, true, "completion persists")
+        expectEqual(reloaded.isWalkthroughPresented, false, "presentation does not persist")
+    }
+}
+
 @main
 private struct AirPostureSettingsCheck {
     @MainActor
@@ -231,6 +284,7 @@ private struct AirPostureSettingsCheck {
         checkOneTimeLegacyMigration()
         checkValidationAndPersistence()
         checkInvalidStoredColorFallback()
+        checkWalkthroughPersistenceAndMigrate()
 
         if failures > 0 {
             FileHandle.standardError.write(Data("\(failures) settings check(s) failed\n".utf8))

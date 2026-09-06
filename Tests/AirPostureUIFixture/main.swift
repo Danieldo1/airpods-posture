@@ -14,6 +14,8 @@ import SwiftUI
     init() {
         UserDefaults.standard.set(false, forKey: "isTrackingEnabled")
         settings = AirPostureSettings()
+        settings.hasCompletedWalkthrough = true
+        settings.isWalkthroughPresented = false
         if CommandLine.arguments.contains("--smoke-console") {
             tracker = PostureTrackingManager(
                 defaults: .standard, now: Date.init,
@@ -77,6 +79,7 @@ struct FixtureView: View {
     @State private var dark = false
     @State private var page = "Console"
     @State private var expanded = true
+    @State private var walkthroughStep = WalkthroughStep.welcome
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
@@ -89,6 +92,7 @@ struct FixtureView: View {
                     Text("Console").tag("Console")
                     Text("Reminders").tag("Reminders")
                     Text("Analytics").tag("Analytics")
+                    Text("Walkthrough").tag("Walkthrough")
                 }.pickerStyle(.radioGroup)
                 Text("Console uses the actual menu-bar view. Expand This week and Options, then scroll. Reminders and Analytics isolate those same views for closer inspection.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -106,6 +110,17 @@ struct FixtureView: View {
                         ReminderOptionsView(settings: state.settings).padding(16).frame(width: 360)
                             .background(ConsoleScrollBehavior())
                     }
+                } else if page == "Walkthrough" {
+                    WalkthroughView(
+                        step: $walkthroughStep,
+                        connectionTitle: state.tracker.connectionStatus.title,
+                        authorizationDenied: state.tracker.authorizationDenied,
+                        canCalibrate: state.tracker.canCalibrate,
+                        didJustCalibrate: state.tracker.didJustCalibrate,
+                        onCalibrate: { state.tracker.calibrate() },
+                        onSkip: { page = "Console" },
+                        onFinish: { page = "Console" }
+                    )
                 } else {
                     ScrollView(.vertical) {
                         PostureAnalyticsView(store: state.store, isExpanded: $expanded).padding(16).frame(width: 360)

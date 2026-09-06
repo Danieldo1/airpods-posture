@@ -1,5 +1,8 @@
 import AppKit
 import SwiftUI
+#if SWIFT_PACKAGE
+import AirPostureCore
+#endif
 
 @main
 struct AirPostureMacApp: App {
@@ -54,6 +57,10 @@ final class AppSession: ObservableObject {
         self.overlayManager = WarningOverlayManager(tracker: tracker, settings: settings)
         self.weekStore = WeeklyAnalyticsStore(tracker: tracker)
         tracker.configure(settings: settings)
+        settings.migrateWalkthroughIfNeeded(hasAnyCalibration: tracker.hasAnyCalibration)
+        settings.isWalkthroughPresented = Walkthrough.shouldAutoPresent(
+            hasCompleted: settings.hasCompletedWalkthrough
+        )
         AlertService.shared.configure(settings: settings)
         self.breakClock = BreakReminderClock(settings: settings, alerts: .shared)
     }

@@ -258,6 +258,8 @@ private func runGroup(named name: String) {
         runAnalyticsChecks()
     case "breaks":
         runBreakReminderChecks()
+    case "walkthrough":
+        runWalkthroughChecks()
     default:
         FileHandle.standardError.write(Data("FAIL unknown feature-check group: \(name)\n".utf8))
         failures += 1
@@ -265,7 +267,7 @@ private func runGroup(named name: String) {
 }
 
 let requestedGroups = CommandLine.arguments.dropFirst()
-let groups = requestedGroups.isEmpty ? ["warnings", "analytics", "breaks"] : Array(requestedGroups)
+let groups = requestedGroups.isEmpty ? ["warnings", "analytics", "breaks", "walkthrough"] : Array(requestedGroups)
 for group in groups {
     runGroup(named: group)
 }

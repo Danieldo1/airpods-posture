@@ -13,6 +13,7 @@ CORE_SOURCES=(Sources/AirPostureCore/*.swift)
 SETTINGS_SOURCES=(
   Sources/AirPostureCore/WarningIntensity.swift
   Sources/AirPostureCore/BreakReminder.swift
+  Sources/AirPostureCore/Walkthrough.swift
   Sources/AirPostureMac/AirPostureSettings.swift
 )
 SOUND_SOURCES=(

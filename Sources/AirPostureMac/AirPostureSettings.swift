@@ -259,6 +259,12 @@ final class AirPostureSettings: ObservableObject {
         didSet { defaults.set(showHeadTurnEnabled, forKey: Key.showHeadTurnEnabled) }
     }
 
+    @Published var hasCompletedWalkthrough: Bool {
+        didSet { defaults.set(hasCompletedWalkthrough, forKey: Key.hasCompletedWalkthrough) }
+    }
+
+    @Published var isWalkthroughPresented: Bool
+
     @Published var snoozeEndsAt: Date?
 
     var isSnoozed: Bool {
@@ -287,6 +293,7 @@ final class AirPostureSettings: ObservableObject {
         static let lookAwayGateEnabled = "lookAwayGateEnabled"
         static let lookAwayThresholdDegrees = "lookAwayThresholdDegrees"
         static let showHeadTurnEnabled = "showHeadTurnEnabled"
+        static let hasCompletedWalkthrough = "hasCompletedWalkthrough"
 
         static func strength(for style: WarningStyle) -> String {
             "overlayAppearance.\(style.rawValue).strength"
@@ -391,6 +398,26 @@ final class AirPostureSettings: ObservableObject {
             fallback: LookAway.fallbackThreshold
         )
         showHeadTurnEnabled = defaults.object(forKey: Key.showHeadTurnEnabled) as? Bool ?? true
+        hasCompletedWalkthrough = defaults.object(forKey: Key.hasCompletedWalkthrough) as? Bool ?? false
+        isWalkthroughPresented = false
+    }
+
+    func completeWalkthrough() {
+        hasCompletedWalkthrough = true
+        isWalkthroughPresented = false
+    }
+
+    func startWalkthrough() {
+        isWalkthroughPresented = true
+    }
+
+    func migrateWalkthroughIfNeeded(hasAnyCalibration: Bool) {
+        let hasKey = defaults.object(forKey: Key.hasCompletedWalkthrough) != nil
+        guard Walkthrough.shouldMigrateAsCompleted(
+            hasCompletionKey: hasKey,
+            hasAnyCalibration: hasAnyCalibration
+        ) else { return }
+        hasCompletedWalkthrough = true
     }
 
     func snooze(minutes: Int) {
