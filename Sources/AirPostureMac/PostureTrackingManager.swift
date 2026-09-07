@@ -199,7 +199,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     private var smoothedPitchDegrees: Double?
     private var smoothedRollDegrees: Double?
     private var smoothedYawDegrees: Double?
-    private var sessionYawDegrees: Double?
+    private var yawReference = YawReference()
     private var slouchStartedAt: Date?
     private var hasReceivedMotionSample = false
     private var isSystemSleeping = false
@@ -326,7 +326,9 @@ final class PostureTrackingManager: NSObject, ObservableObject {
                     self.motionFreshAfterUptime = self.monotonic()
                     self.hasReceivedMotionSample = false
                     self.lastSuccessfulMotionTime = nil
-                    self.armMotionSettle()
+                    // Sleep and wake hand the headphones a fresh yaw origin, so the
+                    // turn zero from before the transition no longer means anything.
+                    self.clearSessionYaw()
                     self.setConnectionStatus(self.isTrackingEnabled ? .searching : .disconnected)
                     self.resetSlouchState()
                     self.publishAnalytics(state: .inactive)
@@ -478,16 +480,9 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         currentRollDegrees = smooth(rawRoll, previous: &smoothedRollDegrees)
         currentYawDegrees = smoothAngle(rawYaw, previous: &smoothedYawDegrees)
 
-        if sessionYawDegrees == nil {
-            sessionYawDegrees = currentYawDegrees
-        }
-
         migrateLegacyPitchOnlyBaselineIfNeeded()
 
-        let yawDelta = PostureGaugeMapping.wrappedDegreesDelta(
-            current: currentYawDegrees,
-            baseline: sessionYawDegrees ?? currentYawDegrees
-        )
+        let yawDelta = yawReference.turnDegrees(forYaw: currentYawDegrees)
         yawDeltaDegrees = yawDelta
 
         guard let baselinePitch = baselinePitchDegrees, let baselineRoll = baselineRollDegrees else {
@@ -570,13 +565,13 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     }
 
     private func rezeroSessionYaw() {
-        sessionYawDegrees = currentYawDegrees
+        yawReference.rezero(toYaw: currentYawDegrees)
         yawDeltaDegrees = 0
         isLookingAway = false
     }
 
     private func clearSessionYaw() {
-        sessionYawDegrees = nil
+        yawReference.invalidate()
         smoothedYawDegrees = nil
         yawDeltaDegrees = 0
         isLookingAway = false

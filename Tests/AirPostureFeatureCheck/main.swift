@@ -15,6 +15,37 @@ func expectEqual(
     }
 }
 
+func expect(_ condition: @autoclosure () -> Bool, _ name: String) {
+    if !condition() {
+        FileHandle.standardError.write(Data("FAIL \(name)\n".utf8))
+        failures += 1
+    }
+}
+
+func runTurnChecks() {
+    // The zero is captured from the first sample of a new reference frame.
+    var reference = YawReference()
+    expect(reference.zeroDegrees == nil, "turn zero starts unestablished")
+    expectEqual(reference.turnDegrees(forYaw: 20), 0, "first sample defines the zero")
+    expectEqual(reference.turnDegrees(forYaw: 32), 12, "turn measured from the zero")
+
+    // Sleep/wake and reconnects hand the headphones a fresh yaw origin, so a zero
+    // captured against the old frame is meaningless and must not survive.
+    reference.invalidate()
+    expect(reference.zeroDegrees == nil, "frame change discards the zero")
+    expectEqual(reference.turnDegrees(forYaw: 140), 0, "zero re-captured after frame change")
+    expectEqual(reference.turnDegrees(forYaw: 150), 10, "turn measured from the new zero")
+
+    // Calibration moves the zero to whatever the user is facing now.
+    reference.rezero(toYaw: 150)
+    expectEqual(reference.turnDegrees(forYaw: 150), 0, "calibration zeroes the turn")
+
+    // The zero is a circular value and must take the short way round the seam.
+    var seam = YawReference()
+    _ = seam.turnDegrees(forYaw: 178)
+    expectEqual(seam.turnDegrees(forYaw: -175), 7, "turn crosses the ±180° seam")
+}
+
 func runWarningChecks() {
     expectEqual(
         WarningIntensity.target(
@@ -260,6 +291,8 @@ private func runGroup(named name: String) {
         runBreakReminderChecks()
     case "walkthrough":
         runWalkthroughChecks()
+    case "turn":
+        runTurnChecks()
     default:
         FileHandle.standardError.write(Data("FAIL unknown feature-check group: \(name)\n".utf8))
         failures += 1
@@ -267,7 +300,7 @@ private func runGroup(named name: String) {
 }
 
 let requestedGroups = CommandLine.arguments.dropFirst()
-let groups = requestedGroups.isEmpty ? ["warnings", "analytics", "breaks", "walkthrough"] : Array(requestedGroups)
+let groups = requestedGroups.isEmpty ? ["warnings", "analytics", "breaks", "walkthrough", "turn"] : Array(requestedGroups)
 for group in groups {
     runGroup(named: group)
 }
