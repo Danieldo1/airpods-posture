@@ -79,6 +79,14 @@ public enum PostureGaugeMapping {
         return delta
     }
 
+    /// Exponential smoothing for a circular angle. Blending the raw degrees
+    /// would slew across the whole circle when a turn crosses the ±180° seam,
+    /// so the sample is stepped along the shortest path instead.
+    public static func smoothedDegrees(sample: Double, previous: Double, alpha: Double) -> Double {
+        let stepped = previous + alpha * wrappedDegreesDelta(current: sample, baseline: previous)
+        return wrappedDegreesDelta(current: stepped, baseline: 0)
+    }
+
     public static func isLookingAway(
         yawDelta: Double,
         threshold: Double,

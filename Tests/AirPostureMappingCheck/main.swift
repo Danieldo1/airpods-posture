@@ -121,6 +121,45 @@ private func testWrappedDegreesDeltaHandlesWrap() {
     expectEqual(PostureGaugeMapping.wrappedDegreesDelta(current: 180, baseline: -180), 0, "±180 same heading")
 }
 
+private func testSmoothedDegreesMatchesPlainBlendAwayFromSeam() {
+    expectEqual(
+        PostureGaugeMapping.smoothedDegrees(sample: 20, previous: 10, alpha: 0.4),
+        14,
+        "smoothing blends toward sample"
+    )
+    expectEqual(
+        PostureGaugeMapping.smoothedDegrees(sample: -20, previous: -10, alpha: 0.4),
+        -14,
+        "smoothing blends toward negative sample"
+    )
+    expectEqual(
+        PostureGaugeMapping.smoothedDegrees(sample: 30, previous: 30, alpha: 0.4),
+        30,
+        "smoothing holds a steady sample"
+    )
+}
+
+private func testSmoothedDegreesTakesShortPathAcrossSeam() {
+    // A 1.5° turn from +179.5° lands on -179.0°. Blending those linearly would
+    // slew the whole way round the circle; the short path barely moves.
+    let next = PostureGaugeMapping.smoothedDegrees(sample: -179, previous: 179.5, alpha: 0.4)
+    expectEqual(PostureGaugeMapping.wrappedDegreesDelta(current: next, baseline: 179.5), 0.6, "seam step stays small")
+    expect(abs(next) <= 180, "smoothed angle stays normalized")
+}
+
+private func testSmoothedDegreesKeepsTurnStableThroughSeamCrossing() {
+    // Neutral sits near the ±180° seam, then the head turns ~4° through it.
+    let baseline = 176.0
+    var previous = baseline
+    var worstTurn = 0.0
+    for sample in [176.0, 178, 179.5, -179, -177.5, -176, -175] {
+        previous = PostureGaugeMapping.smoothedDegrees(sample: sample, previous: previous, alpha: 0.4)
+        let turn = PostureGaugeMapping.wrappedDegreesDelta(current: previous, baseline: baseline)
+        worstTurn = max(worstTurn, abs(turn))
+    }
+    expect(worstTurn <= 10, "turn readout tracks a small seam-crossing turn, got \(worstTurn)")
+}
+
 private func testIsLookingAwayGate() {
     expect(
         PostureGaugeMapping.isLookingAway(yawDelta: 40, threshold: 35, enabled: true),
@@ -170,6 +209,9 @@ testBustPosePreservesMeasuredRotation()
 testForwardPitchCreatesNeckSlouch()
 testUprightAndChinUpDoNotTranslateNeck()
 testWrappedDegreesDeltaHandlesWrap()
+testSmoothedDegreesMatchesPlainBlendAwayFromSeam()
+testSmoothedDegreesTakesShortPathAcrossSeam()
+testSmoothedDegreesKeepsTurnStableThroughSeamCrossing()
 testIsLookingAwayGate()
 testYawVisualClampsAndPositiveYawFacesPadRight()
 

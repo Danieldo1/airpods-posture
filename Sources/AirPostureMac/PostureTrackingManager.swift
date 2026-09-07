@@ -476,7 +476,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         let rawYaw = yaw * 180.0 / .pi
         currentPitchDegrees = smooth(rawPitch, previous: &smoothedPitchDegrees)
         currentRollDegrees = smooth(rawRoll, previous: &smoothedRollDegrees)
-        currentYawDegrees = smooth(rawYaw, previous: &smoothedYawDegrees)
+        currentYawDegrees = smoothAngle(rawYaw, previous: &smoothedYawDegrees)
 
         if sessionYawDegrees == nil {
             sessionYawDegrees = currentYawDegrees
@@ -708,6 +708,21 @@ final class PostureTrackingManager: NSObject, ObservableObject {
             return sample
         }
         let next = Motion.smoothingAlpha * sample + (1 - Motion.smoothingAlpha) * last
+        previous = next
+        return next
+    }
+
+    /// Yaw is circular, so it cannot use the plain blend that pitch and roll use.
+    private func smoothAngle(_ sample: Double, previous: inout Double?) -> Double {
+        guard let last = previous else {
+            previous = sample
+            return sample
+        }
+        let next = PostureGaugeMapping.smoothedDegrees(
+            sample: sample,
+            previous: last,
+            alpha: Motion.smoothingAlpha
+        )
         previous = next
         return next
     }
