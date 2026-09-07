@@ -52,6 +52,52 @@ func runTurnChecks() {
     var seam = YawReference()
     _ = seam.turnDegrees(forYaw: 178)
     expectEqual(seam.turnDegrees(forYaw: -175), 7, "turn crosses the ±180° seam")
+
+    // The sensor's yaw wanders on its own. This replays the drift measured from
+    // a real session, where yaw slid 21.9° -> 4.5° over 70s with the head still.
+    let sampleStep = 0.04
+    var drifting = YawReference()
+    var worstDrift = 0.0
+    var elapsed = 0.0
+    while elapsed < 70 {
+        let driftingYaw = 5.0 + 16.9 * exp(-elapsed / 7)
+        let turn = drifting.turnDegrees(
+            forYaw: driftingYaw,
+            elapsedSeconds: elapsed == 0 ? 0 : sampleStep,
+            recenterWithinDegrees: 35
+        )
+        worstDrift = max(worstDrift, abs(turn))
+        elapsed += sampleStep
+    }
+    expect(worstDrift < 6, "drift is absorbed, worst turn was \(worstDrift)")
+
+    // Re-centering must not eat real turns once the zero has matured.
+    var mature = YawReference()
+    _ = mature.turnDegrees(forYaw: 0)
+    for _ in 0..<7500 {
+        _ = mature.turnDegrees(forYaw: 0, elapsedSeconds: sampleStep, recenterWithinDegrees: 35)
+    }
+    var glance = 0.0
+    for _ in 0..<125 {
+        glance = mature.turnDegrees(forYaw: 30, elapsedSeconds: sampleStep, recenterWithinDegrees: 35)
+    }
+    expect(glance > 27, "a matured zero keeps a real 5-second glance, got \(glance)")
+
+    // A genuine look-away is outside the resting band and must freeze the zero,
+    // otherwise holding a glance would quietly redefine neutral and release the gate.
+    var lookedAway = YawReference()
+    _ = lookedAway.turnDegrees(forYaw: 0)
+    for _ in 0..<1500 {
+        _ = lookedAway.turnDegrees(forYaw: 50, elapsedSeconds: sampleStep, recenterWithinDegrees: 35)
+    }
+    expectEqual(lookedAway.zeroDegrees ?? .nan, 0, "a look-away does not drag the zero")
+
+    // One sample carrying a long gap must not be able to pull the zero onto the
+    // head's current heading; the correction is bounded to a single step.
+    var resumed = YawReference()
+    _ = resumed.turnDegrees(forYaw: 0)
+    let afterGap = resumed.turnDegrees(forYaw: 20, elapsedSeconds: 30, recenterWithinDegrees: 35)
+    expect(afterGap > 15, "a long gap cannot pull the zero, got \(afterGap)")
 }
 
 func runWarningChecks() {

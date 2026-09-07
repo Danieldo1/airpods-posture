@@ -200,6 +200,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     private var smoothedRollDegrees: Double?
     private var smoothedYawDegrees: Double?
     private var yawReference = YawReference()
+    private var lastYawSampleUptime: TimeInterval?
     private var slouchStartedAt: Date?
     private var hasReceivedMotionSample = false
     private var isSystemSleeping = false
@@ -482,7 +483,18 @@ final class PostureTrackingManager: NSObject, ObservableObject {
 
         migrateLegacyPitchOnlyBaselineIfNeeded()
 
-        let yawDelta = yawReference.turnDegrees(forYaw: currentYawDegrees)
+        // Sample timing comes from the sensor's own clock so the drift
+        // correction is paced by the samples it actually saw.
+        let sampleElapsed = lastYawSampleUptime.map { motion.timestamp - $0 } ?? 0
+        lastYawSampleUptime = motion.timestamp
+
+        let gateEnabled = settings?.lookAwayGateEnabled ?? true
+        let gateThreshold = settings?.lookAwayThresholdDegrees ?? 35
+        let yawDelta = yawReference.turnDegrees(
+            forYaw: currentYawDegrees,
+            elapsedSeconds: sampleElapsed,
+            recenterWithinDegrees: gateThreshold
+        )
         yawDeltaDegrees = yawDelta
 
         guard let baselinePitch = baselinePitchDegrees, let baselineRoll = baselineRollDegrees else {
@@ -511,8 +523,6 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         let combined = hypot(tiltNorm, leanNorm)
         deviationDegrees = combined * tiltThresholdDegrees
 
-        let gateEnabled = settings?.lookAwayGateEnabled ?? true
-        let gateThreshold = settings?.lookAwayThresholdDegrees ?? 35
         let gated = PostureGaugeMapping.isLookingAway(
             yawDelta: yawDelta,
             threshold: gateThreshold,
@@ -587,6 +597,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         smoothedPitchDegrees = nil
         smoothedRollDegrees = nil
         smoothedYawDegrees = nil
+        lastYawSampleUptime = nil
         yawDeltaDegrees = 0
         isLookingAway = false
     }
