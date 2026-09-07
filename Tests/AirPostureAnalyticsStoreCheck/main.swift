@@ -15,24 +15,42 @@ private func check(_ value: Bool, _ name: String) {
 // enter the private production motion handler without a test-only public API.
 private final class FixtureAttitude: CMAttitude {
     let fixturePitch: Double
-    init(pitch: Double) { fixturePitch = pitch; super.init() }
+    let fixtureRoll: Double
+    init(pitch: Double, roll: Double = 0) {
+        fixturePitch = pitch
+        fixtureRoll = roll
+        super.init()
+    }
     required init?(coder: NSCoder) { fatalError("not used") }
     override var pitch: Double { fixturePitch }
-    override var roll: Double { 0 }
+    override var roll: Double { fixtureRoll }
     override var yaw: Double { 0 }
 }
 
 private final class FixtureMotion: CMDeviceMotion {
     let fixtureAttitude: CMAttitude
     let fixtureTimestamp: TimeInterval
-    init(pitch: Double, timestamp: TimeInterval) {
-        fixtureAttitude = FixtureAttitude(pitch: pitch)
+    init(pitch: Double, roll: Double = 0, timestamp: TimeInterval) {
+        fixtureAttitude = FixtureAttitude(pitch: pitch, roll: roll)
         fixtureTimestamp = timestamp
         super.init()
     }
     required init?(coder: NSCoder) { fatalError("not used") }
     override var attitude: CMAttitude { fixtureAttitude }
     override var timestamp: TimeInterval { fixtureTimestamp }
+}
+
+/// Live manager so connect-settle runs; stubs keep Core Motion from touching hardware.
+private final class FixtureHeadphoneMotionManager: CMHeadphoneMotionManager {
+    override var isDeviceMotionAvailable: Bool { false }
+    override var isDeviceMotionActive: Bool { false }
+    override func startConnectionStatusUpdates() {}
+    override func stopConnectionStatusUpdates() {}
+    override func startDeviceMotionUpdates(
+        to queue: OperationQueue,
+        withHandler handler: @escaping CMHeadphoneMotionManager.DeviceMotionHandler
+    ) {}
+    override func stopDeviceMotionUpdates() {}
 }
 
 private extension PostureTrackingManager {
@@ -92,6 +110,45 @@ private func checkLivePoseDoesNotInvalidateTracker() {
     check(tracker.postureBand == .paused, "disabling tracking publishes paused band")
     check(liveEvents > liveBeforeDisable && tracker.liveReadings.snapshot.band == .paused,
           "disabling tracking refreshes the live gauge to paused")
+}
+
+@MainActor
+private func checkStillChinDownAfterConnectDoesNotRebaseNeutral() {
+    // Reproduce the live-log bug: after connect settle, a still chin-down pose
+    // (~-11° vs saved Neutral) was rewritten as working Neutral because
+    // rebaseMaxCombined (1.25) is past the slouch ellipse (1.0).
+    let suite = "AirPostureRebaseCheck.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set(true, forKey: "isTrackingEnabled")
+    defaults.set(0.859, forKey: "baselinePitchDegrees")
+    defaults.set(15.042, forKey: "baselineRollDegrees")
+    defaults.set(10.0, forKey: "sensitivityDegrees")
+    let date = Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 9, day: 6, hour: 12))!
+    var uptime = 100.0
+    let tracker = PostureTrackingManager(
+        defaults: defaults,
+        now: { date },
+        monotonic: { uptime },
+        motionManager: FixtureHeadphoneMotionManager()
+    )
+    let settings = AirPostureSettings(defaults: defaults)
+    tracker.configure(settings: settings)
+    defer { tracker.isTrackingEnabled = false }
+
+    let chinDownPitch = -10.876 * .pi / 180
+    let stillRoll = 13.593 * .pi / 180
+    tracker.receiveFixture(FixtureMotion(pitch: chinDownPitch, roll: stillRoll, timestamp: uptime))
+    uptime += 0.5
+    for _ in 0..<12 {
+        uptime += 0.02
+        tracker.receiveFixture(FixtureMotion(pitch: chinDownPitch, roll: stillRoll, timestamp: uptime))
+    }
+
+    check(abs((tracker.baselinePitchDegrees ?? .nan) - 0.859) < 0.2,
+          "still chin-down after connect must keep saved Neutral pitch")
+    check(tracker.pitchDeltaDegrees < -8,
+          "still chin-down after connect must keep showing downward tilt")
 }
 
 @MainActor
@@ -170,6 +227,7 @@ private struct AnalyticsStoreCheck {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         checkLivePoseDoesNotInvalidateTracker()
+        checkStillChinDownAfterConnectDoesNotRebaseNeutral()
         checkRejectedMotionRestartsGrace(root: root, calendar: calendar)
         var now = calendar.date(from: DateComponents(year: 2026, month: 9, day: 6, hour: 12))!
         var uptime = 100.0

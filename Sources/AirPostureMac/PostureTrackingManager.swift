@@ -206,11 +206,6 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     private var motionFreshAfterUptime: TimeInterval = 0
     private var needsMotionSettle = true
     private var motionSettleUntilUptime: TimeInterval = 0
-    private var awaitingWorkingRebase = false
-    private var needsWorkingRebase = false
-    private var rebasePitchSamples: [Double] = []
-    private var rebaseRollSamples: [Double] = []
-    private var rebaseYawSamples: [Double] = []
     private var sleepObservers: [NSObjectProtocol] = []
     private var lastSuccessfulMotionTime: Date?
     private var healthCheckTimer: Timer?
@@ -219,13 +214,6 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     private var deskRollDegrees: Double? = nil
     private var sofaPitchDegrees: Double? = nil
     private var sofaRollDegrees: Double? = nil
-    // #region agent log
-    private var debugMotionTick = 0
-    private var debugSettleTick = 0
-    private var debugLastLoggedPitch = Double.nan
-    private var debugLastLoggedRoll = Double.nan
-    private var debugLastLoggedYaw = Double.nan
-    // #endregion
 
     private enum SettingsKey {
         static let isTrackingEnabled = "isTrackingEnabled"
@@ -252,9 +240,6 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         static let reconnectSilence: TimeInterval = 5
         static let disconnectSilence: TimeInterval = 10
         static let connectSettleSeconds: TimeInterval = 0.45
-        static let rebaseSampleCount = 12
-        static let rebaseMaxStddev = 1.2
-        static let rebaseMaxCombined = 1.25
     }
 
     override convenience init() {
@@ -389,22 +374,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     }
 
     private func setConnectionStatus(_ status: ConnectionStatus) {
-        if connectionStatus != status {
-            // #region agent log
-            agentLog(
-                hypothesisId: "J",
-                location: "PostureTrackingManager.setConnectionStatus",
-                message: "connection changed",
-                data: [
-                    "from": connectionStatus.rawValue,
-                    "to": status.rawValue,
-                    "hasSample": hasReceivedMotionSample,
-                    "settling": needsMotionSettle || monotonic() < motionSettleUntilUptime
-                ]
-            )
-            // #endregion
-            connectionStatus = status
-        }
+        if connectionStatus != status { connectionStatus = status }
     }
 
     private func setLastErrorMessage(_ message: String?) {
@@ -490,24 +460,6 @@ final class PostureTrackingManager: NSObject, ObservableObject {
             return
         }
         if motionManager != nil, discardUnsettledMotion() {
-            // #region agent log
-            debugSettleTick += 1
-            if debugSettleTick <= 4 || debugSettleTick % 12 == 0 {
-                agentLog(
-                    hypothesisId: "G",
-                    location: "PostureTrackingManager.handleMotion",
-                    message: "sample discarded during settle",
-                    data: [
-                        "tick": debugSettleTick,
-                        "until": motionSettleUntilUptime,
-                        "now": monotonic(),
-                        "rawPitch": pitch * 180.0 / .pi,
-                        "rawRoll": roll * 180.0 / .pi,
-                        "rawYaw": yaw * 180.0 / .pi
-                    ]
-                )
-            }
-            // #endregion
             return
         }
         // Observers see a complete result, including unchanged zones after wake/reconnect.
@@ -531,7 +483,6 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         }
 
         migrateLegacyPitchOnlyBaselineIfNeeded()
-        rebaseWorkingNeutralIfStill()
 
         let yawDelta = PostureGaugeMapping.wrappedDegreesDelta(
             current: currentYawDegrees,
@@ -576,43 +527,6 @@ final class PostureTrackingManager: NSObject, ObservableObject {
 
         let ellipsePast = combined >= 1
         evaluatePosture(isPastThreshold: ellipsePast && !gated)
-        // #region agent log
-        debugMotionTick += 1
-        let moved = debugLastLoggedPitch.isNaN
-            || abs(tiltDelta - debugLastLoggedPitch) >= 0.35
-            || abs(leanDelta - debugLastLoggedRoll) >= 0.35
-            || abs(yawDelta - debugLastLoggedYaw) >= 0.35
-        if moved || debugMotionTick % 15 == 0 {
-            debugLastLoggedPitch = tiltDelta
-            debugLastLoggedRoll = leanDelta
-            debugLastLoggedYaw = yawDelta
-            agentLog(
-                hypothesisId: "I",
-                location: "PostureTrackingManager.handleMotion",
-                message: "live deltas",
-                data: [
-                    "tick": debugMotionTick,
-                    "pitchDelta": tiltDelta,
-                    "rollDelta": leanDelta,
-                    "yawDelta": yawDelta,
-                    "currentPitch": currentPitchDegrees,
-                    "currentRoll": currentRollDegrees,
-                    "currentYaw": currentYawDegrees,
-                    "baselinePitch": baselinePitch,
-                    "baselineRoll": baselineRoll,
-                    "rawPitch": rawPitch,
-                    "rawRoll": rawRoll,
-                    "rawYaw": rawYaw,
-                    "band": String(describing: resolvedPostureBand()),
-                    "lookingAway": gated,
-                    "snapshotPitch": liveReadings.snapshot.pitchDeltaDegrees,
-                    "snapshotRoll": liveReadings.snapshot.rollDeltaDegrees,
-                    "snapshotYaw": liveReadings.snapshot.yawDeltaDegrees,
-                    "snapshotCalibrated": liveReadings.snapshot.isCalibrated
-                ]
-            )
-        }
-        // #endregion
     }
 
     private func evaluatePosture(isPastThreshold pastThreshold: Bool) {
@@ -662,20 +576,6 @@ final class PostureTrackingManager: NSObject, ObservableObject {
     }
 
     private func clearSessionYaw() {
-        // #region agent log
-        if sessionYawDegrees != nil || smoothedYawDegrees != nil || !needsMotionSettle {
-            agentLog(
-                hypothesisId: "J",
-                location: "PostureTrackingManager.clearSessionYaw",
-                message: "session yaw cleared and settle re-armed",
-                data: [
-                    "hadYaw": sessionYawDegrees != nil,
-                    "connection": connectionStatus.rawValue,
-                    "hasSample": hasReceivedMotionSample
-                ]
-            )
-        }
-        // #endregion
         sessionYawDegrees = nil
         smoothedYawDegrees = nil
         yawDeltaDegrees = 0
@@ -690,88 +590,18 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         motionSettleUntilUptime = 0
         smoothedPitchDegrees = nil
         smoothedRollDegrees = nil
-        awaitingWorkingRebase = false
-        needsWorkingRebase = false
-        rebasePitchSamples.removeAll()
-        rebaseRollSamples.removeAll()
-        rebaseYawSamples.removeAll()
     }
 
     private func discardUnsettledMotion() -> Bool {
         if needsMotionSettle {
             needsMotionSettle = false
             motionSettleUntilUptime = monotonic() + Motion.connectSettleSeconds
-            awaitingWorkingRebase = true
             return true
         }
         if monotonic() < motionSettleUntilUptime {
             return true
         }
-        if awaitingWorkingRebase {
-            awaitingWorkingRebase = false
-            needsWorkingRebase = isCalibrated
-        }
         return false
-    }
-
-    private func rebaseWorkingNeutralIfStill() {
-        guard motionManager != nil, needsWorkingRebase, isCalibrated else { return }
-        rebasePitchSamples.append(currentPitchDegrees)
-        rebaseRollSamples.append(currentRollDegrees)
-        rebaseYawSamples.append(currentYawDegrees)
-        guard rebasePitchSamples.count >= Motion.rebaseSampleCount else { return }
-        needsWorkingRebase = false
-        let pitchMean = Self.mean(rebasePitchSamples)
-        let rollMean = Self.mean(rebaseRollSamples)
-        let yawMean = Self.mean(rebaseYawSamples)
-        let still = Self.stddev(rebasePitchSamples, mean: pitchMean) <= Motion.rebaseMaxStddev
-            && Self.stddev(rebaseRollSamples, mean: rollMean) <= Motion.rebaseMaxStddev
-        let savedPitch = baselinePitchDegrees
-        let savedRoll = baselineRollDegrees
-        rebasePitchSamples.removeAll()
-        rebaseRollSamples.removeAll()
-        rebaseYawSamples.removeAll()
-        guard still, let savedPitch, let savedRoll else { return }
-
-        let tilt = pitchMean - savedPitch
-        let lean = rollMean - savedRoll
-        let combined = hypot(
-            max(-tilt, 0) / max(tiltThresholdDegrees, 0.001),
-            abs(lean) / max(leanThresholdDegrees, 0.001)
-        )
-        guard combined < Motion.rebaseMaxCombined else { return }
-
-        baselinePitchDegrees = pitchMean
-        baselineRollDegrees = rollMean
-        sessionYawDegrees = yawMean
-        yawDeltaDegrees = 0
-        resetLiveDeviation()
-        // #region agent log
-        agentLog(
-            hypothesisId: "L",
-            location: "PostureTrackingManager.rebaseWorkingNeutralIfStill",
-            message: "rebased working neutral after still connect",
-            data: [
-                "savedPitch": savedPitch,
-                "savedRoll": savedRoll,
-                "workingPitch": pitchMean,
-                "workingRoll": rollMean,
-                "pitchShift": tilt,
-                "rollShift": lean,
-                "combined": combined
-            ]
-        )
-        // #endregion
-    }
-
-    private static func mean(_ values: [Double]) -> Double {
-        values.reduce(0, +) / Double(values.count)
-    }
-
-    private static func stddev(_ values: [Double], mean: Double) -> Double {
-        guard values.count > 1 else { return 0 }
-        let variance = values.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(values.count)
-        return variance.squareRoot()
     }
 
     private func persistBaseline(pitch: Double, roll: Double) {
@@ -860,27 +690,11 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         let silence = now().timeIntervalSince(lastSuccessfulMotionTime)
 
         if silence >= Motion.disconnectSilence {
-            // #region agent log
-            agentLog(
-                hypothesisId: "J",
-                location: "PostureTrackingManager.performHealthCheck",
-                message: "health check disconnect",
-                data: ["silence": silence]
-            )
-            // #endregion
             hasReceivedMotionSample = false
             setConnectionStatus(.disconnected)
             clearSessionYaw()
             resetSlouchState()
         } else if silence >= Motion.reconnectSilence {
-            // #region agent log
-            agentLog(
-                hypothesisId: "J",
-                location: "PostureTrackingManager.performHealthCheck",
-                message: "health check searching",
-                data: ["silence": silence]
-            )
-            // #endregion
             hasReceivedMotionSample = false
             setConnectionStatus(.searching)
             clearSessionYaw()
@@ -909,35 +723,6 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         if value == 0 { return fallback }
         return Swift.min(Swift.max(value, min), max)
     }
-
-    // #region agent log
-    private func agentLog(hypothesisId: String, location: String, message: String, data: [String: Any] = [:]) {
-        guard motionManager != nil else { return }
-        let payload: [String: Any] = [
-            "sessionId": "head-move",
-            "runId": "live",
-            "hypothesisId": hypothesisId,
-            "location": location,
-            "message": message,
-            "data": data,
-            "timestamp": Date().timeIntervalSince1970 * 1000
-        ]
-        guard JSONSerialization.isValidJSONObject(payload),
-              let encoded = try? JSONSerialization.data(withJSONObject: payload),
-              let line = String(data: encoded, encoding: .utf8) else { return }
-        let url = URL(fileURLWithPath: "/Users/Daniel_1/Desktop/mac-posture/.cursor/debug-head-move.log")
-        do {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            if !FileManager.default.fileExists(atPath: url.path) {
-                FileManager.default.createFile(atPath: url.path, contents: nil)
-            }
-            let handle = try FileHandle(forWritingTo: url)
-            defer { try? handle.close() }
-            handle.seekToEndOfFile()
-            handle.write(Data((line + "\n").utf8))
-        } catch {}
-    }
-    // #endregion
 }
 
 extension PostureTrackingManager: CMHeadphoneMotionManagerDelegate {
