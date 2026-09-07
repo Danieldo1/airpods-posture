@@ -36,6 +36,14 @@ func runTurnChecks() {
     expectEqual(reference.turnDegrees(forYaw: 140), 0, "zero re-captured after frame change")
     expectEqual(reference.turnDegrees(forYaw: 150), 10, "turn measured from the new zero")
 
+    // A gap in samples is not a new reference frame, so nothing about resuming
+    // may move the zero. Re-capturing it here is what used to snap the turn to
+    // 0 mid-turn and leave straight-ahead reading as a large offset.
+    var dropout = YawReference()
+    _ = dropout.turnDegrees(forYaw: 20)
+    expectEqual(dropout.turnDegrees(forYaw: 50), 30, "zero survives a gap in samples")
+    expect(dropout.zeroDegrees == 20, "resuming does not re-capture the zero")
+
     // Calibration moves the zero to whatever the user is facing now.
     reference.rezero(toYaw: 150)
     expectEqual(reference.turnDegrees(forYaw: 150), 0, "calibration zeroes the turn")

@@ -328,7 +328,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
                     self.lastSuccessfulMotionTime = nil
                     // Sleep and wake hand the headphones a fresh yaw origin, so the
                     // turn zero from before the transition no longer means anything.
-                    self.clearSessionYaw()
+                    self.invalidateYawZero()
                     self.setConnectionStatus(self.isTrackingEnabled ? .searching : .disconnected)
                     self.resetSlouchState()
                     self.publishAnalytics(state: .inactive)
@@ -425,7 +425,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         stopHealthCheck()
         hasReceivedMotionSample = false
         lastSuccessfulMotionTime = nil
-        clearSessionYaw()
+        invalidateYawZero()
         if resetLiveState {
             resetSlouchState()
             setConnectionStatus(.disconnected)
@@ -439,7 +439,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
             setLastErrorMessage(error.localizedDescription)
             hasReceivedMotionSample = false
             setConnectionStatus(.searching)
-            clearSessionYaw()
+            armMotionSettle()
             resetSlouchState()
             return
         }
@@ -570,21 +570,25 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         isLookingAway = false
     }
 
-    private func clearSessionYaw() {
+    /// Discards the turn zero. Only for a genuine reference-frame change, since
+    /// the next sample re-captures the zero from wherever the head is pointing.
+    private func invalidateYawZero() {
         yawReference.invalidate()
-        smoothedYawDegrees = nil
-        yawDeltaDegrees = 0
-        isLookingAway = false
         armMotionSettle()
     }
 
     private func armMotionSettle() {
-        // Headphone Euler angles jump after connect, sleep, or disconnect.
-        // Drop that window so a saved Neutral is not scored as a huge lean.
+        // Headphone Euler angles jump after connect, sleep, or a gap in samples.
+        // Drop that window and restart the filters so a saved Neutral is not
+        // scored as a huge lean. The turn zero is a reference rather than filter
+        // state, so it is not touched here and survives the gap.
         needsMotionSettle = true
         motionSettleUntilUptime = 0
         smoothedPitchDegrees = nil
         smoothedRollDegrees = nil
+        smoothedYawDegrees = nil
+        yawDeltaDegrees = 0
+        isLookingAway = false
     }
 
     private func discardUnsettledMotion() -> Bool {
@@ -651,7 +655,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         defer { syncConsolePublications() }
         if isTrackingEnabled && !hasReceivedMotionSample {
             setConnectionStatus(.searching)
-            clearSessionYaw()
+            invalidateYawZero()
             startMotionUpdates()
         }
     }
@@ -661,7 +665,7 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         hasReceivedMotionSample = false
         lastSuccessfulMotionTime = nil
         setConnectionStatus(.disconnected)
-        clearSessionYaw()
+        invalidateYawZero()
         resetSlouchState()
     }
 
@@ -687,12 +691,12 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         if silence >= Motion.disconnectSilence {
             hasReceivedMotionSample = false
             setConnectionStatus(.disconnected)
-            clearSessionYaw()
+            armMotionSettle()
             resetSlouchState()
         } else if silence >= Motion.reconnectSilence {
             hasReceivedMotionSample = false
             setConnectionStatus(.searching)
-            clearSessionYaw()
+            armMotionSettle()
             resetSlouchState()
         }
     }
