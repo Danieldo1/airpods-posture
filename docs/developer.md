@@ -129,8 +129,8 @@ Snooze hides the overlay and mutes sound and banners. Tracking and the week coun
 | Overlay color | Warm | Warm / Cool / Alert presets plus a custom picker rendered by ColorSelector. Custom colors are stored as validated opaque sRGB; strength controls opacity separately. Each visible style remembers its own color. |
 | Sound pack | Pop | Pop, Tink, Purr, Bottle, Morse. Volume 10–80%. Preview uses the selected pack and volume even while paused or snoozed, without changing analytics, banners, or warning cooldown. |
 | Icon style | Posture figure | Also Horizon cross and Minimal dot. Orange while you are off-neutral through grace; red once a slouch is sustained. |
-| Ignore slouch when I turn | On | Pauses tilt/lean scoring past the turn-away angle. Yaw is session-relative only. |
-| Turn-away angle | 35° | 20–60°. Only used when the look-away gate is on. |
+| Ignore slouch when I turn | On | Pauses tilt/lean scoring past the turn-away angle. Yaw is session-relative only, and a turn held past the angle without head movement for ~3 min becomes the new forward. |
+| Turn-away angle | 35° | 20–60°. Gates slouch scoring only when the look-away gate is on; a turn held motionless past this angle for ~3 min becomes the new forward either way. |
 | Show head turn | On | Rotates the bust left/right. Does not change scoring. |
 | Sit-up chime | Off | A softer tick when you return upright. |
 
@@ -141,7 +141,7 @@ Existing appearance preferences migrate once: the prior global strength initiali
 1. `CMHeadphoneMotionManager` streams `CMDeviceMotion` from the AirPods IMU.
 2. **Pitch (tilt)**, **roll (lean)**, and **yaw (turn)** are validated, converted to degrees, and low-pass filtered (α = 0.4).
 3. **Set Neutral Posture** stores pitch and roll for the active Desk or Sofa preset, and zeros **this session’s** heading (yaw is not persisted across launches or reconnects).
-4. Live deltas: tilt = pitch − baseline (negative = chin down); lean = roll − baseline (either side); turn = wrap-aware yaw − session zero.
+4. Live deltas: tilt = pitch − baseline (negative = chin down); lean = roll − baseline (either side); turn = wrap-aware yaw − session zero. The session zero then stays put and never follows the head: yaw that moves while the gyro reads the head as not rotating is absorbed into the zero as sensor drift, and a turn held past the turn-away angle without any head rotation for about three minutes is read as a stale zero and becomes the new forward.
 5. Off-neutral is scored as an **ellipse**: 10° of forward tilt *or* ~5° of side lean (lean is twice as sensitive). Combined motion can also cross the line even if neither axis does alone. **Yaw is not in the ellipse.**
 6. With **Ignore slouch when I turn** on (default), if `|turn|` reaches the turn-away angle (default 35°), tilt/lean scoring pauses — overlay, banner, grace, and off-neutral week time stay quiet while you look aside. Monitored time still counts.
 7. With the early cue on, the overlay starts at the configured fraction of the same ellipse and reaches 25% of its chosen maximum at the real boundary. Through grace it rises toward the maximum; the sound, banner, red menu state, and episode still begin only after grace. With the cue off, the overlay also waits until after grace. Returning toward neutral fades it away.

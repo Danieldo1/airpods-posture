@@ -241,6 +241,9 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         static let reconnectSilence: TimeInterval = 5
         static let disconnectSilence: TimeInterval = 10
         static let connectSettleSeconds: TimeInterval = 0.45
+        // Knob: a resting head reads about 0.1 deg/s of gyro noise and a real
+        // turn 10-200 deg/s, so anything under this counts as motionless.
+        static let stillRotationRateDegreesPerSecond = 3.0
     }
 
     override convenience init() {
@@ -493,7 +496,8 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         let yawDelta = yawReference.turnDegrees(
             forYaw: currentYawDegrees,
             elapsedSeconds: sampleElapsed,
-            recenterWithinDegrees: gateThreshold
+            isHeadStill: Self.isHeadStill(motion.rotationRate),
+            lookAwayThresholdDegrees: gateThreshold
         )
         yawDeltaDegrees = yawDelta
 
@@ -735,6 +739,20 @@ final class PostureTrackingManager: NSObject, ObservableObject {
         )
         previous = next
         return next
+    }
+
+    /// Whether the gyro says the head is not rotating. A real turn always
+    /// carries angular velocity, so this is what lets the turn zero tell the
+    /// sensor's own yaw drift apart from the user actually looking aside.
+    ///
+    /// A missing or nonsensical rotation rate counts as movement: a frozen zero
+    /// is the safe failure, an absorbed real turn is not.
+    private static func isHeadStill(_ rate: CMRotationRate) -> Bool {
+        let axes = [rate.x, rate.y, rate.z]
+        guard axes.allSatisfy({ $0.isFinite }) else { return false }
+        guard axes.contains(where: { $0 != 0 }) else { return false }
+        let degreesPerSecond = axes.reduce(0) { $0 + $1 * $1 }.squareRoot() * 180 / .pi
+        return degreesPerSecond < Motion.stillRotationRateDegreesPerSecond
     }
 
     private static func isValidAttitude(pitch: Double, roll: Double, yaw: Double) -> Bool {

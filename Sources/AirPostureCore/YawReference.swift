@@ -1,5 +1,3 @@
-import Foundation
-
 /// Owns the zero point for head turn.
 ///
 /// Tilt and lean are measured against a baseline the user saved deliberately.
@@ -12,63 +10,91 @@ public struct YawReference: Equatable, Sendable {
     /// Nil until a sample establishes the zero for the current reference frame.
     public private(set) var zeroDegrees: Double?
 
-    private var zeroAgeSeconds: Double = 0
+    /// The previous sample's heading, so a drift correction can be measured
+    /// over the interval that actually elapsed between two samples.
+    private var lastYawDegrees: Double?
 
-    private let minTimeConstantSeconds: Double
-    private let maxTimeConstantSeconds: Double
-    private let maxStepSeconds: Double
+    /// Motionless time accumulated while the turn sat past the look-away angle.
+    private var heldStillPastThresholdSeconds: Double = 0
+
+    private let maxDriftDegreesPerSecond: Double
+    private let unlatchAfterSeconds: Double
+
+    /// Ceiling on the interval one sample may claim, so a sample arriving after
+    /// a stall cannot absorb a whole jump in a single step.
+    private static let maxDriftIntervalSeconds = 0.1
 
     /// - Parameters:
-    ///   - minTimeConstantSeconds: How fluid a freshly captured zero is. The
-    ///     sensor's yaw is still converging for the first few seconds after it
-    ///     establishes a frame, so a new zero has to be treated as provisional.
-    ///   - maxTimeConstantSeconds: How stiff a matured zero becomes, which sets
-    ///     how much of a sustained real turn survives.
-    ///   - maxStepSeconds: Ceiling on one sample's contribution, so a sample
-    ///     arriving after a long gap cannot yank the zero across in one go.
+    ///   - maxDriftDegreesPerSecond: Knob — the fastest yaw movement the zero
+    ///     will swallow as drift. A resting gyro-corrected heading wanders far
+    ///     slower than this, and the ceiling is what makes a real turn that was
+    ///     wrongly flagged still leak through as a turn instead of vanishing.
+    ///   - unlatchAfterSeconds: Knob — how long a turn past the look-away angle
+    ///     may be held without any head rotation before it is read as a stale
+    ///     zero rather than a glance.
     public init(
-        minTimeConstantSeconds: Double = 2,
-        maxTimeConstantSeconds: Double = 120,
-        maxStepSeconds: Double = 0.5
+        maxDriftDegreesPerSecond: Double = 2,
+        unlatchAfterSeconds: Double = 180
     ) {
-        self.minTimeConstantSeconds = minTimeConstantSeconds
-        self.maxTimeConstantSeconds = maxTimeConstantSeconds
-        self.maxStepSeconds = maxStepSeconds
+        self.maxDriftDegreesPerSecond = maxDriftDegreesPerSecond
+        self.unlatchAfterSeconds = unlatchAfterSeconds
     }
 
     /// Turn angle for `yawDegrees`, establishing the zero if the frame is new.
     ///
-    /// The sensor's yaw wanders even when the head is still, so the zero is
-    /// eased toward the head's resting heading as samples arrive. The pull
-    /// weakens as the zero ages: fresh zeros are captured mid-convergence and
-    /// need to move, settled ones should hold still so real turns still read.
+    /// The zero is fixed, and the two things that move it both move it away from
+    /// the head rather than toward it. Yaw that changes while the head is not
+    /// rotating cannot be a turn, so it is sensor drift and is absorbed into the
+    /// zero, holding the reported turn where it was. And a turn that sits past
+    /// the look-away angle while the head never moves is not a glance: a stale
+    /// zero is the only thing that reads large with the head straight, so after
+    /// `unlatchAfterSeconds` this heading becomes forward.
     ///
-    /// - Parameter recenterWithinDegrees: Resting band. Turns beyond it are
-    ///   treated as deliberate look-aways and freeze the zero. Pass 0 to hold
-    ///   the zero completely still.
+    /// - Parameters:
+    ///   - elapsedSeconds: Interval since the previous sample, on the sensor's
+    ///     own clock. Pass 0 for the first sample after a gap: that interval was
+    ///     never observed, so it can neither absorb drift nor age a look-away.
+    ///   - isHeadStill: Whether the gyro's rotation rate says the head is not
+    ///     turning. A real turn always carries angular velocity, so this is what
+    ///     separates drift from movement.
+    ///   - lookAwayThresholdDegrees: The gate's turn-away angle. Pass 0 to leave
+    ///     a large turn latched indefinitely.
     public mutating func turnDegrees(
         forYaw yawDegrees: Double,
         elapsedSeconds: Double = 0,
-        recenterWithinDegrees: Double = 0
+        isHeadStill: Bool = false,
+        lookAwayThresholdDegrees: Double = 0
     ) -> Double {
-        guard let zero = zeroDegrees else {
-            zeroDegrees = yawDegrees
-            zeroAgeSeconds = 0
+        guard var zero = zeroDegrees else {
+            rezero(toYaw: yawDegrees)
             return 0
         }
 
+        let previousYaw = lastYawDegrees ?? yawDegrees
+        lastYawDegrees = yawDegrees
+        let hasInterval = elapsedSeconds.isFinite && elapsedSeconds > 0
+
+        if hasInterval, isHeadStill {
+            let drift = PostureGaugeMapping.wrappedDegreesDelta(current: yawDegrees, baseline: previousYaw)
+            let limit = maxDriftDegreesPerSecond * min(elapsedSeconds, Self.maxDriftIntervalSeconds)
+            let absorbed = max(-limit, min(limit, drift))
+            zero = PostureGaugeMapping.wrappedDegreesDelta(current: zero + absorbed, baseline: 0)
+            zeroDegrees = zero
+        }
+
         let turn = PostureGaugeMapping.wrappedDegreesDelta(current: yawDegrees, baseline: zero)
-        guard elapsedSeconds > 0, elapsedSeconds.isFinite else { return turn }
 
-        let step = min(elapsedSeconds, maxStepSeconds)
-        zeroAgeSeconds += step
-        guard recenterWithinDegrees > 0, abs(turn) < recenterWithinDegrees else { return turn }
-
-        let timeConstant = min(maxTimeConstantSeconds, max(minTimeConstantSeconds, zeroAgeSeconds))
-        let pull = 1 - exp(-step / timeConstant)
-        let moved = PostureGaugeMapping.wrappedDegreesDelta(current: zero + pull * turn, baseline: 0)
-        zeroDegrees = moved
-        return PostureGaugeMapping.wrappedDegreesDelta(current: yawDegrees, baseline: moved)
+        guard lookAwayThresholdDegrees > 0, abs(turn) >= lookAwayThresholdDegrees else {
+            heldStillPastThresholdSeconds = 0
+            return turn
+        }
+        // Only motionless time ages a look-away, so walking around with the head
+        // turned cannot redefine forward mid-stride.
+        guard hasInterval, isHeadStill else { return turn }
+        heldStillPastThresholdSeconds += elapsedSeconds
+        guard heldStillPastThresholdSeconds >= unlatchAfterSeconds else { return turn }
+        rezero(toYaw: yawDegrees)
+        return 0
     }
 
     /// Discards the zero because the sensor's reference frame changed: sleep/wake,
@@ -76,12 +102,14 @@ public struct YawReference: Equatable, Sendable {
     /// such a change, and must not come through here.
     public mutating func invalidate() {
         zeroDegrees = nil
-        zeroAgeSeconds = 0
+        lastYawDegrees = nil
+        heldStillPastThresholdSeconds = 0
     }
 
     /// Moves the zero to the current heading because the user asked for it.
     public mutating func rezero(toYaw yawDegrees: Double) {
         zeroDegrees = yawDegrees
-        zeroAgeSeconds = 0
+        lastYawDegrees = yawDegrees
+        heldStillPastThresholdSeconds = 0
     }
 }

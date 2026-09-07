@@ -53,51 +53,271 @@ func runTurnChecks() {
     _ = seam.turnDegrees(forYaw: 178)
     expectEqual(seam.turnDegrees(forYaw: -175), 7, "turn crosses the ±180° seam")
 
-    // The sensor's yaw wanders on its own. This replays the drift measured from
-    // a real session, where yaw slid 21.9° -> 4.5° over 70s with the head still.
+    // The sensor delivers about 50 Hz; 0.04 s steps pace these checks a little
+    // coarser than that, which only makes the time-based math work harder.
     let sampleStep = 0.04
-    var drifting = YawReference()
-    var worstDrift = 0.0
-    var elapsed = 0.0
-    while elapsed < 70 {
-        let driftingYaw = 5.0 + 16.9 * exp(-elapsed / 7)
-        let turn = drifting.turnDegrees(
-            forYaw: driftingYaw,
-            elapsedSeconds: elapsed == 0 ? 0 : sampleStep,
-            recenterWithinDegrees: 35
+    let gate = 35.0
+
+    // THE regression. The zero must not follow the head: a real turn has to keep
+    // reading for as long as it is held, and straight ahead has to keep reading
+    // zero afterwards. Easing the zero toward the head's heading is what used to
+    // leave a held glance decaying away and the return shifted the other way.
+    var held = YawReference()
+    _ = held.turnDegrees(forYaw: 0)
+    var heldTurn = 0.0
+    for step in 1...25 {
+        heldTurn = held.turnDegrees(
+            forYaw: Double(step),
+            elapsedSeconds: sampleStep,
+            isHeadStill: false,
+            lookAwayThresholdDegrees: gate
         )
-        worstDrift = max(worstDrift, abs(turn))
-        elapsed += sampleStep
     }
-    expect(worstDrift < 6, "drift is absorbed, worst turn was \(worstDrift)")
+    expectEqual(heldTurn, 25, "a real turn reads its full angle")
+    for step in 0..<Int(600 / sampleStep) {
+        // Flat to a tenth of a degree, the way a resting head reads.
+        let jitter = 0.1 * sin(Double(step) * sampleStep * 7)
+        heldTurn = held.turnDegrees(
+            forYaw: 25 + jitter,
+            elapsedSeconds: sampleStep,
+            isHeadStill: true,
+            lookAwayThresholdDegrees: gate
+        )
+    }
+    expectEqual(heldTurn, 25, "a turn held still for ten minutes still reads", accuracy: 0.5)
+    var returned = 0.0
+    for step in stride(from: 24, through: 0, by: -1) {
+        returned = held.turnDegrees(
+            forYaw: Double(step),
+            elapsedSeconds: sampleStep,
+            isHeadStill: false,
+            lookAwayThresholdDegrees: gate
+        )
+    }
+    expectEqual(returned, 0, "looking back after a long hold reads straight ahead", accuracy: 0.5)
 
-    // Re-centering must not eat real turns once the zero has matured.
-    var mature = YawReference()
-    _ = mature.turnDegrees(forYaw: 0)
-    for _ in 0..<7500 {
-        _ = mature.turnDegrees(forYaw: 0, elapsedSeconds: sampleStep, recenterWithinDegrees: 35)
+    // Calibration is the user saying "this is forward". Nothing about a turn
+    // taken seconds later may be treated as provisional.
+    var calibrated = YawReference()
+    calibrated.rezero(toYaw: 100)
+    for _ in 0..<Int(2 / sampleStep) {
+        _ = calibrated.turnDegrees(
+            forYaw: 100,
+            elapsedSeconds: sampleStep,
+            isHeadStill: true,
+            lookAwayThresholdDegrees: gate
+        )
     }
-    var glance = 0.0
-    for _ in 0..<125 {
-        glance = mature.turnDegrees(forYaw: 30, elapsedSeconds: sampleStep, recenterWithinDegrees: 35)
+    var freshTurn = 0.0
+    for step in 1...25 {
+        freshTurn = calibrated.turnDegrees(
+            forYaw: 100 + Double(step),
+            elapsedSeconds: sampleStep,
+            isHeadStill: false,
+            lookAwayThresholdDegrees: gate
+        )
     }
-    expect(glance > 27, "a matured zero keeps a real 5-second glance, got \(glance)")
+    for _ in 0..<Int(180 / sampleStep) {
+        freshTurn = calibrated.turnDegrees(
+            forYaw: 125,
+            elapsedSeconds: sampleStep,
+            isHeadStill: true,
+            lookAwayThresholdDegrees: gate
+        )
+    }
+    expectEqual(freshTurn, 25, "a turn taken right after calibration is not absorbed", accuracy: 0.5)
 
-    // A genuine look-away is outside the resting band and must freeze the zero,
-    // otherwise holding a glance would quietly redefine neutral and release the gate.
-    var lookedAway = YawReference()
-    _ = lookedAway.turnDegrees(forYaw: 0)
-    for _ in 0..<1500 {
-        _ = lookedAway.turnDegrees(forYaw: 50, elapsedSeconds: sampleStep, recenterWithinDegrees: 35)
+    // Real drift is yaw moving while the head is not: absorb it into the zero so
+    // it never reaches the readout, however long it creeps.
+    var creeping = YawReference()
+    _ = creeping.turnDegrees(forYaw: 0)
+    var worstCreep = 0.0
+    for step in 1...Int(1800 / sampleStep) {
+        let creepingYaw = Double(step) * sampleStep / 60
+        let turn = creeping.turnDegrees(
+            forYaw: creepingYaw,
+            elapsedSeconds: sampleStep,
+            isHeadStill: true,
+            lookAwayThresholdDegrees: gate
+        )
+        worstCreep = max(worstCreep, abs(turn))
     }
-    expectEqual(lookedAway.zeroDegrees ?? .nan, 0, "a look-away does not drag the zero")
+    expect(worstCreep < 0.2, "a degree a minute of drift never reaches the readout, worst was \(worstCreep)")
+    expectEqual(creeping.zeroDegrees ?? .nan, 30, "the zero followed the drift", accuracy: 0.2)
 
-    // One sample carrying a long gap must not be able to pull the zero onto the
-    // head's current heading; the correction is bounded to a single step.
+    var fastDrift = YawReference()
+    _ = fastDrift.turnDegrees(forYaw: 0)
+    var fastDriftTurn = 0.0
+    for step in 1...Int(60 / sampleStep) {
+        fastDriftTurn = fastDrift.turnDegrees(
+            forYaw: Double(step) * sampleStep * 0.5,
+            elapsedSeconds: sampleStep,
+            isHeadStill: true,
+            lookAwayThresholdDegrees: gate
+        )
+    }
+    expectEqual(fastDriftTurn, 0, "half a degree a second of drift is absorbed too", accuracy: 0.05)
+
+    // The heading is still converging just after the sensor establishes a frame.
+    var converging = YawReference()
+    _ = converging.turnDegrees(forYaw: 0)
+    var convergingTurn = 0.0
+    for step in 1...Int(2 / sampleStep) {
+        convergingTurn = converging.turnDegrees(
+            forYaw: Double(step) * sampleStep * 1.5,
+            elapsedSeconds: sampleStep,
+            isHeadStill: true,
+            lookAwayThresholdDegrees: gate
+        )
+    }
+    expectEqual(convergingTurn, 0, "a heading converging after connect is absorbed", accuracy: 0.1)
+
+    // Absorption is capped per sample, so a real turn the gyro failed to notice
+    // leaks through as a turn instead of disappearing into the zero.
+    var misflagged = YawReference()
+    _ = misflagged.turnDegrees(forYaw: 0)
+    let leaked = misflagged.turnDegrees(
+        forYaw: 6,
+        elapsedSeconds: sampleStep,
+        isHeadStill: true,
+        lookAwayThresholdDegrees: gate
+    )
+    expect(leaked > 5.5, "a turn wrongly flagged still is not erased, got \(leaked)")
+
+    // Nor may one sample claim a long stall and absorb the whole jump across it.
+    var stalled = YawReference()
+    _ = stalled.turnDegrees(forYaw: 0)
+    let afterStall = stalled.turnDegrees(
+        forYaw: 20,
+        elapsedSeconds: 4,
+        isHeadStill: true,
+        lookAwayThresholdDegrees: gate
+    )
+    expect(afterStall > 19.5, "a stalled sample absorbs at most one step, got \(afterStall)")
+
+    // A turn parked past the gate with the head motionless for minutes is a
+    // stale zero, not a glance. Under that time it must still read in full.
+    var latched = YawReference()
+    _ = latched.turnDegrees(forYaw: 0)
+    for step in 1...50 {
+        _ = latched.turnDegrees(
+            forYaw: Double(step),
+            elapsedSeconds: sampleStep,
+            isHeadStill: false,
+            lookAwayThresholdDegrees: gate
+        )
+    }
+    var latchedTurn = 0.0
+    for _ in 0..<Int(170 / sampleStep) {
+        latchedTurn = latched.turnDegrees(
+            forYaw: 50,
+            elapsedSeconds: sampleStep,
+            isHeadStill: true,
+            lookAwayThresholdDegrees: gate
+        )
+    }
+    expectEqual(latchedTurn, 50, "a held look-away reads in full before the un-latch time")
+    expectEqual(latched.zeroDegrees ?? .nan, 0, "holding a look-away does not drag the zero")
+    for _ in 0..<Int(20 / sampleStep) {
+        latchedTurn = latched.turnDegrees(
+            forYaw: 50,
+            elapsedSeconds: sampleStep,
+            isHeadStill: true,
+            lookAwayThresholdDegrees: gate
+        )
+    }
+    expectEqual(latchedTurn, 0, "a look-away held motionless past the un-latch time becomes forward")
+    expectEqual(latched.zeroDegrees ?? .nan, 50, "un-latching takes the current heading as the zero")
+
+    // Time only counts while the head is motionless, so walking around with the
+    // head turned cannot redefine forward mid-stride.
+    var walking = YawReference()
+    _ = walking.turnDegrees(forYaw: 0)
+    var walkingTurn = 0.0
+    for _ in 0..<Int(600 / sampleStep) {
+        walkingTurn = walking.turnDegrees(
+            forYaw: 50,
+            elapsedSeconds: sampleStep,
+            isHeadStill: false,
+            lookAwayThresholdDegrees: gate
+        )
+    }
+    expectEqual(walkingTurn, 50, "moving samples do not age a held look-away")
+
+    // Looking forward again restarts the clock: two glances short of the
+    // un-latch time do not add up to one long one.
+    var glancing = YawReference()
+    _ = glancing.turnDegrees(forYaw: 0)
+    for step in 1...50 {
+        _ = glancing.turnDegrees(
+            forYaw: Double(step),
+            elapsedSeconds: sampleStep,
+            isHeadStill: false,
+            lookAwayThresholdDegrees: gate
+        )
+    }
+    var glanceTurn = 0.0
+    for pass in 0..<2 {
+        for _ in 0..<Int(170 / sampleStep) {
+            glanceTurn = glancing.turnDegrees(
+                forYaw: 50,
+                elapsedSeconds: sampleStep,
+                isHeadStill: true,
+                lookAwayThresholdDegrees: gate
+            )
+        }
+        if pass == 0 {
+            _ = glancing.turnDegrees(
+                forYaw: 0,
+                elapsedSeconds: sampleStep,
+                isHeadStill: false,
+                lookAwayThresholdDegrees: gate
+            )
+        }
+    }
+    expect(glanceTurn > 45, "looking forward restarts the un-latch clock, got \(glanceTurn)")
+
+    // With the gate off there is no angle to un-latch from.
+    var ungated = YawReference()
+    _ = ungated.turnDegrees(forYaw: 0)
+    for step in 1...50 {
+        _ = ungated.turnDegrees(forYaw: Double(step), elapsedSeconds: sampleStep, isHeadStill: false)
+    }
+    var ungatedTurn = 0.0
+    for _ in 0..<Int(600 / sampleStep) {
+        ungatedTurn = ungated.turnDegrees(forYaw: 50, elapsedSeconds: sampleStep, isHeadStill: true)
+    }
+    expectEqual(ungatedTurn, 50, "a zero threshold never un-latches")
+
+    // The zero is circular, so absorbing drift has to cross the seam and stay
+    // inside ±180 rather than wander off the scale.
+    var seamDrift = YawReference()
+    _ = seamDrift.turnDegrees(forYaw: 179)
+    var seamDriftTurn = 0.0
+    var seamYaw = 179.0
+    for _ in 0..<100 {
+        seamYaw = PostureGaugeMapping.wrappedDegreesDelta(current: seamYaw + 0.02, baseline: 0)
+        seamDriftTurn = seamDrift.turnDegrees(
+            forYaw: seamYaw,
+            elapsedSeconds: sampleStep,
+            isHeadStill: true,
+            lookAwayThresholdDegrees: gate
+        )
+    }
+    expectEqual(seamDriftTurn, 0, "drift across the ±180° seam stays at zero", accuracy: 0.01)
+    expectEqual(seamDrift.zeroDegrees ?? .nan, -179, "the zero stays normalized across the seam", accuracy: 0.01)
+
+    // The first sample after a gap carries an interval nobody observed, so the
+    // jump across it shows as a turn instead of being absorbed.
     var resumed = YawReference()
     _ = resumed.turnDegrees(forYaw: 0)
-    let afterGap = resumed.turnDegrees(forYaw: 20, elapsedSeconds: 30, recenterWithinDegrees: 35)
-    expect(afterGap > 15, "a long gap cannot pull the zero, got \(afterGap)")
+    let afterGap = resumed.turnDegrees(
+        forYaw: 30,
+        elapsedSeconds: 0,
+        isHeadStill: true,
+        lookAwayThresholdDegrees: gate
+    )
+    expectEqual(afterGap, 30, "a sample after a gap is not absorbed")
 }
 
 func runWarningChecks() {

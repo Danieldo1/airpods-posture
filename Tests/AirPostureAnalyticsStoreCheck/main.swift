@@ -38,6 +38,10 @@ private final class FixtureMotion: CMDeviceMotion {
     required init?(coder: NSCoder) { fatalError("not used") }
     override var attitude: CMAttitude { fixtureAttitude }
     override var timestamp: TimeInterval { fixtureTimestamp }
+    // These fixtures hold one attitude, which is a head at rest: the tracker
+    // reads this channel to tell yaw drift from a real turn, and the inherited
+    // getter traps on a synthesized sample.
+    override var rotationRate: CMRotationRate { CMRotationRate(x: 0.001, y: -0.002, z: 0.001) }
 }
 
 /// Live manager so connect-settle runs; stubs keep Core Motion from touching hardware.
@@ -55,6 +59,21 @@ private final class FixtureHeadphoneMotionManager: CMHeadphoneMotionManager {
 
 private extension PostureTrackingManager {
     func receiveFixture(_ motion: CMDeviceMotion?) { handleMotion(motion, error: nil) }
+    static func fixtureHeadStill(_ rate: CMRotationRate) -> Bool { isHeadStill(rate) }
+}
+
+/// The still flag decides whether yaw movement is the sensor's drift or the
+/// user's turn, and it is the one piece of that logic Core Motion keeps out of
+/// AirPostureCore.
+@MainActor
+private func checkHeadStillFlagReadsTheGyro() {
+    let still = PostureTrackingManager.fixtureHeadStill(CMRotationRate(x: 0.001, y: -0.002, z: 0.001))
+    check(still, "a resting gyro reads as still")
+    // 4 deg/s on one axis, just over the threshold.
+    check(!PostureTrackingManager.fixtureHeadStill(CMRotationRate(x: 0, y: 0.07, z: 0)), "a turning gyro reads as moving")
+    // An unpopulated or broken channel must fail toward a frozen zero.
+    check(!PostureTrackingManager.fixtureHeadStill(CMRotationRate(x: 0, y: 0, z: 0)), "an unpopulated gyro reads as moving")
+    check(!PostureTrackingManager.fixtureHeadStill(CMRotationRate(x: .nan, y: 0, z: 0)), "a non-finite gyro reads as moving")
 }
 
 @MainActor
@@ -226,6 +245,7 @@ private struct AnalyticsStoreCheck {
         defer { try? FileManager.default.removeItem(at: root) }
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        checkHeadStillFlagReadsTheGyro()
         checkLivePoseDoesNotInvalidateTracker()
         checkStillChinDownAfterConnectDoesNotRebaseNeutral()
         checkRejectedMotionRestartsGrace(root: root, calendar: calendar)
